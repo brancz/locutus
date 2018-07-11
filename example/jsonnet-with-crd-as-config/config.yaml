@@ -1,0 +1,13 @@
+mainResource: grafana
+resources:
+- name: grafana
+  kind: Grafana
+  apiVersion: monitoring.coreos.com/v1
+- name: deployment
+  kind: Deployment
+  apiVersion: apps/v1
+  keyTransformations:
+  - action: keep
+    regex: "([a-z0-9]([-a-z0-9]*[a-z0-9])?)/grafana-(.*)"
+  - regex: "([a-z0-9]([-a-z0-9]*[a-z0-9])?)/grafana-(.*)"
+    replacement: "$1/$3"

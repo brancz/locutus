@@ -1,0 +1,1 @@
+{"apiVersion":"workflow.kubernetes.io/v1alpha1","kind":"Rollout","metadata":{"name":"jsonnet"},"spec":{"groups":[{"steps":[{"action":"CreateOrUpdate","object":"deployment"}]}]}}

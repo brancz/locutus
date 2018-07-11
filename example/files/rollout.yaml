@@ -1,0 +1,9 @@
+apiVersion: workflow.kubernetes.io/v1alpha1
+kind: Rollout
+metadata:
+  name: grafana-rollout-0
+spec:
+  groups:
+  - steps:
+    - object: "grafana/deployment.json"
+      action: "CreateOrUpdate"
