@@ -86,9 +86,10 @@ type jsonnetImporter struct {
 	virtualConfigPath string
 }
 
-func (i *jsonnetImporter) Import(dir, importedPath string) (*jsonnet.ImportedData, error) {
+func (i *jsonnetImporter) Import(dir, importedPath string) (contents jsonnet.Contents, foundAt string, err error) {
 	if importedPath == i.virtualConfigPath {
-		return &jsonnet.ImportedData{Content: string(i.configContent), FoundHere: i.virtualConfigPath}, nil
+		
+		return jsonnet.MakeContents(string(i.configContent)), i.virtualConfigPath, nil
 	}
 
 	return i.fileImporter.Import(dir, importedPath)

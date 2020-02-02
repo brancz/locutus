@@ -6,12 +6,11 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 )
 
@@ -122,7 +121,6 @@ func setConfigDefaults(groupVersion string, config *rest.Config) error {
 	if config.GroupVersion.Group == "" && config.GroupVersion.Version == "v1" {
 		config.APIPath = "/api"
 	}
-	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
 	return nil
 }
 
@@ -135,7 +133,7 @@ type ResourceClient struct {
 func (rc *ResourceClient) UpdateWithCurrent(current, updated *unstructured.Unstructured, subresources ...string) (*unstructured.Unstructured, error) {
 	rc.prepareUnstructuredForUpdate(current, updated)
 
-	return rc.ResourceInterface.Update(updated, subresources...)
+	return rc.ResourceInterface.Update(updated,v1.UpdateOptions{}, subresources...)
 }
 
 func (rc *ResourceClient) prepareUnstructuredForUpdate(current, updated *unstructured.Unstructured) error {

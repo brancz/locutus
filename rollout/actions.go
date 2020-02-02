@@ -25,7 +25,7 @@ type CreateOrUpdateObjectAction struct{}
 func (a *CreateOrUpdateObjectAction) Execute(rc *client.ResourceClient, unstructured *unstructured.Unstructured) error {
 	current, err := rc.Get(unstructured.GetName(), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		_, err := rc.Create(unstructured)
+		_, err := rc.Create(unstructured, metav1.CreateOptions{})
 		return err
 	}
 
@@ -42,7 +42,7 @@ type CreateIfNotExistObjectAction struct{}
 func (a *CreateIfNotExistObjectAction) Execute(rc *client.ResourceClient, unstructured *unstructured.Unstructured) error {
 	_, err := rc.Get(unstructured.GetName(), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		_, err := rc.Create(unstructured)
+		_, err := rc.Create(unstructured, metav1.CreateOptions{})
 		return err
 	}
 

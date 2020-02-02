@@ -1,7 +1,7 @@
 local config = import 'generic-operator/config';
 
 local grafanaDeployment = {
-  apiVersion: 'apps/v1beta2',
+  apiVersion: 'apps/v1',
   kind: 'Deployment',
   metadata: {
     labels: {

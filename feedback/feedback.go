@@ -140,7 +140,7 @@ func (f *feedback) updateStatus() error {
 		return err
 	}
 
-	f.obj, err = c.UpdateStatus(&unstructured.Unstructured{Object: status})
+	f.obj, err = c.UpdateStatus(&unstructured.Unstructured{Object: status}, metav1.UpdateOptions{})
 	return err
 }
 
