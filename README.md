@@ -6,7 +6,7 @@ Configuration management for Kubernetes. Declaratively define of rollout, succes
 
 ## Motivations and comparisons
 
-At CoreOS / Red Hat we built a wite range of automation tools on top of Kubernetes, sometimes referred to as "Operators" (application specific Kubernetes controllers), that manage the entire lifecycle of an application or an application stack, however while suitable for some cases, it's unsuitable for others. This project is research to some extend, in order to explore how much of this work can be implemented in a generic way, but still allowing users who want to have more fine grained control. At best this project can be used without having to write any Go code, however it is extensible, so that if one does find that the functionality that comes out of the box everything is extensible.
+At CoreOS / Red Hat we built a wide range of automation tools on top of Kubernetes, sometimes referred to as "Operators" (application specific Kubernetes controllers), that manage the entire lifecycle of an application or an application stack, however while suitable for some cases, it's unsuitable for others. This project is research to some extend, in order to explore how much of this work can be implemented in a generic way, but still allowing users who want to have more fine grained control. At best this project can be used without having to write any Go code, however it is extensible, so that if one does find that the functionality that comes out of the box everything is extensible.
 
 To some degree this project compares to the operator-sdk, but this project does not only embrace level-triggered deployment management but treats edge triggered deployments (as typically done through CI/CD pipelines) as much of a first class citizen as level-triggered ones.
 
@@ -57,7 +57,7 @@ This section will layout a few examples gradually going from very simple to more
 Firstly install the `locutus`:
 
 ```
-go get github.com:brancz/locutus
+go get github.com/brancz/locutus
 ```
 
 ### File without configuration
