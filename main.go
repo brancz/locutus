@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"net/http/pprof"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -19,7 +20,6 @@ import (
 	"github.com/brancz/locutus/rollout"
 	"github.com/brancz/locutus/rollout/checks"
 	"github.com/brancz/locutus/trigger"
-	"github.com/coreos-inc/tectonic-operators/bazel-tectonic-operators/external/go_sdk/src/net/http/pprof"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/run"
@@ -83,7 +83,7 @@ func Main() int {
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(prometheus.NewGoCollector())
-	reg.MustRegister(prometheus.NewProcessCollector(os.Getpid(), ""))
+	reg.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
