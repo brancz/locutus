@@ -78,7 +78,8 @@ func Main() int {
 
 	logger, err := logger(logLevel)
 	if err != nil {
-		logger.Log("msg", "error creating logger", err)
+		fmt.Println(err)
+		return 1
 	}
 
 	reg := prometheus.NewRegistry()
