@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/go-kit/kit/log"
@@ -133,7 +134,7 @@ type ResourceClient struct {
 func (rc *ResourceClient) UpdateWithCurrent(current, updated *unstructured.Unstructured, subresources ...string) (*unstructured.Unstructured, error) {
 	rc.prepareUnstructuredForUpdate(current, updated)
 
-	return rc.ResourceInterface.Update(updated,v1.UpdateOptions{}, subresources...)
+	return rc.ResourceInterface.Update(context.TODO(), updated,v1.UpdateOptions{}, subresources...)
 }
 
 func (rc *ResourceClient) prepareUnstructuredForUpdate(current, updated *unstructured.Unstructured) error {
