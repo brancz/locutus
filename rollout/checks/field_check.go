@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -130,7 +131,7 @@ func (c *FieldCheck) Execute(u *unstructured.Unstructured) error {
 }
 
 func (c *FieldCheck) currentValues(rc *client.ResourceClient, name string) (map[string]interface{}, error) {
-	u, err := rc.Get(name, metav1.GetOptions{})
+	u, err := rc.Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

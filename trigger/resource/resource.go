@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -94,10 +95,10 @@ func (p *ResourceProvider) NewTrigger(logger log.Logger, client *client.Client) 
 		inf := cache.NewSharedIndexInformer(
 			&cache.ListWatch{
 				ListFunc: cache.ListFunc(func(options metav1.ListOptions) (runtime.Object, error) {
-					return c.List(options)
+					return c.List(context.TODO(), options)
 				}),
 				WatchFunc: cache.WatchFunc(func(options metav1.ListOptions) (watch.Interface, error) {
-					return c.Watch(options)
+					return c.Watch(context.TODO(), options)
 				}),
 			},
 			&unstructured.Unstructured{}, resyncPeriod, cache.Indexers{},

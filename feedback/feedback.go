@@ -1,6 +1,7 @@
 package feedback
 
 import (
+	"context"
 	"reflect"
 	"time"
 
@@ -140,7 +141,7 @@ func (f *feedback) updateStatus() error {
 		return err
 	}
 
-	f.obj, err = c.UpdateStatus(&unstructured.Unstructured{Object: status}, metav1.UpdateOptions{})
+	f.obj, err = c.UpdateStatus(context.TODO(), &unstructured.Unstructured{Object: status}, metav1.UpdateOptions{})
 	return err
 }
 
