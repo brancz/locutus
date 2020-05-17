@@ -1,37 +1,23 @@
 package oneoff
 
 import (
-	"flag"
+	"context"
 	"time"
 
+	"github.com/brancz/locutus/trigger"
 	"github.com/go-kit/kit/log"
-
-	"github.com/brancz/locutus/client"
-	"github.com/brancz/locutus/trigger/types"
 )
 
-type OneOffProvider struct {
+type Trigger struct {
+	trigger.ExecutionRegister
 	interval time.Duration
+	logger   log.Logger
 }
 
-func (p *OneOffProvider) RegisterFlags(s *flag.FlagSet) {
-	// nothing to configure with flags
+func NewTrigger(logger log.Logger) trigger.Trigger {
+	return &Trigger{logger: logger}
 }
 
-func (p *OneOffProvider) Name() string {
-	return "oneoff"
-}
-
-type OneOffTrigger struct {
-	types.ExecutionRegister
-
-	logger log.Logger
-}
-
-func (p *OneOffProvider) NewTrigger(logger log.Logger, _ *client.Client) (types.Trigger, error) {
-	return &OneOffTrigger{logger: logger}, nil
-}
-
-func (t *OneOffTrigger) Run(stopc <-chan struct{}) error {
+func (t *Trigger) Run(ctx context.Context) error {
 	return t.Execute(nil)
 }

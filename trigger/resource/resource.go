@@ -3,12 +3,13 @@ package resource
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/brancz/locutus/trigger"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,7 +23,6 @@ import (
 	"github.com/brancz/locutus/client"
 	"github.com/brancz/locutus/feedback"
 	"github.com/brancz/locutus/rollout"
-	"github.com/brancz/locutus/trigger/types"
 )
 
 const (
@@ -47,37 +47,26 @@ type KeyTransformationConfig struct {
 	Replacement string `json:"replacement"`
 }
 
-type ResourceProvider struct {
-	configFile string
-}
+type Trigger struct {
+	trigger.ExecutionRegister
 
-func (p *ResourceProvider) RegisterFlags(s *flag.FlagSet) {
-	s.StringVar(&p.configFile, "trigger.resource.config", "", "Path to configuration of resource triggers.")
-}
-
-func (p *ResourceProvider) Name() string {
-	return "resource"
-}
-
-type ResourceTrigger struct {
-	types.ExecutionRegister
-
-	infs   map[string]cache.SharedIndexInformer
-	inf    cache.SharedIndexInformer
-	client *client.Client
-	queue  workqueue.RateLimitingInterface
 	logger log.Logger
+	client *client.Client
+
+	infs  map[string]cache.SharedIndexInformer
+	inf   cache.SharedIndexInformer
+	queue workqueue.RateLimitingInterface
 }
 
-func (p *ResourceProvider) NewTrigger(logger log.Logger, client *client.Client) (types.Trigger, error) {
-	t := &ResourceTrigger{
+func NewTrigger(logger log.Logger, client *client.Client, configFile string) (*Trigger, error) {
+	t := &Trigger{
 		logger: logger,
 		client: client,
 		queue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resource"),
 		infs:   map[string]cache.SharedIndexInformer{},
 	}
 
-	f, err := os.Open(p.configFile)
+	f, err := os.Open(configFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to open config file")
 	}
@@ -94,12 +83,12 @@ func (p *ResourceProvider) NewTrigger(logger log.Logger, client *client.Client) 
 		}
 		inf := cache.NewSharedIndexInformer(
 			&cache.ListWatch{
-				ListFunc: cache.ListFunc(func(options metav1.ListOptions) (runtime.Object, error) {
+				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 					return c.List(context.TODO(), options)
-				}),
-				WatchFunc: cache.WatchFunc(func(options metav1.ListOptions) (watch.Interface, error) {
+				},
+				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 					return c.Watch(context.TODO(), options)
-				}),
+				},
 			},
 			&unstructured.Unstructured{}, resyncPeriod, cache.Indexers{},
 		)
@@ -117,7 +106,7 @@ func (p *ResourceProvider) NewTrigger(logger log.Logger, client *client.Client) 
 	return t, nil
 }
 
-func (p *ResourceTrigger) Run(stopc <-chan struct{}) error {
+func (p *Trigger) Run(ctx context.Context) error {
 	defer p.queue.ShutDown()
 
 	p.logger.Log("msg", "resources trigger started")
@@ -125,15 +114,15 @@ func (p *ResourceTrigger) Run(stopc <-chan struct{}) error {
 	go p.worker()
 	for _, inf := range p.infs {
 		go func(informer cache.SharedIndexInformer) {
-			informer.Run(stopc)
+			informer.Run(ctx.Done())
 		}(inf)
 	}
 
-	<-stopc
+	<-ctx.Done()
 	return nil
 }
 
-func (p *ResourceTrigger) keyFunc(obj interface{}) (string, bool) {
+func (p *Trigger) keyFunc(obj interface{}) (string, bool) {
 	k, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
 		return k, false
@@ -141,7 +130,7 @@ func (p *ResourceTrigger) keyFunc(obj interface{}) (string, bool) {
 	return k, true
 }
 
-func (p *ResourceTrigger) enqueue(obj interface{}) {
+func (p *Trigger) enqueue(obj interface{}) {
 	if obj == nil {
 		return
 	}
@@ -157,12 +146,12 @@ func (p *ResourceTrigger) enqueue(obj interface{}) {
 	p.queue.Add(key)
 }
 
-func (p *ResourceTrigger) worker() {
+func (p *Trigger) worker() {
 	for p.processNextWorkItem() {
 	}
 }
 
-func (p *ResourceTrigger) processNextWorkItem() bool {
+func (p *Trigger) processNextWorkItem() bool {
 	key, quit := p.queue.Get()
 	if quit {
 		return false
@@ -175,14 +164,16 @@ func (p *ResourceTrigger) processNextWorkItem() bool {
 		return true
 	}
 
+	level.Warn(p.logger).Log("msg", "sync failed", "key", key, "err", err)
+
 	utilruntime.HandleError(errors.Wrap(err, fmt.Sprintf("Sync %q failed", key)))
 	p.queue.AddRateLimited(key)
 
 	return true
 }
 
-func (p *ResourceTrigger) sync(key string) error {
-	p.logger.Log("msg", "sync triggered", "key", key)
+func (p *Trigger) sync(key string) error {
+	level.Info(p.logger).Log("msg", "sync triggered", "key", key)
 
 	obj, exists, err := p.inf.GetIndexer().GetByKey(key)
 	if err != nil {

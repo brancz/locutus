@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/brancz/locutus/render"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,10 +15,13 @@ import (
 
 	"github.com/brancz/locutus/client"
 	"github.com/brancz/locutus/feedback"
-	renderTypes "github.com/brancz/locutus/render/types"
 	"github.com/brancz/locutus/rollout/checks"
 	"github.com/brancz/locutus/rollout/types"
 )
+
+type Renderer interface {
+	Render(config []byte) (*render.Result, error)
+}
 
 type rolloutMetrics struct {
 	executionDuration prometheus.Summary
@@ -25,17 +29,17 @@ type rolloutMetrics struct {
 	executionsFailed  prometheus.Counter
 }
 
-type RolloutRunner struct {
+type Runner struct {
 	logger     log.Logger
 	client     *client.Client
 	actions    map[string]ObjectAction
 	checks     *checks.SuccessChecks
-	provider   renderTypes.Renderer
+	provider   Renderer
 	renderOnly bool
 	metrics    *rolloutMetrics
 }
 
-func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client, renderer renderTypes.Renderer, checks *checks.SuccessChecks, renderOnly bool) *RolloutRunner {
+func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client, renderer Renderer, checks *checks.SuccessChecks, renderOnly bool) *Runner {
 	m := &rolloutMetrics{
 		executionDuration: prometheus.NewSummary(prometheus.SummaryOpts{
 			Name: "rollout_execution_duration_seconds",
@@ -57,7 +61,7 @@ func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client
 		r.MustRegister(m.executionsFailed)
 	}
 
-	return &RolloutRunner{
+	return &Runner{
 		logger:     logger,
 		client:     client,
 		actions:    map[string]ObjectAction{},
@@ -68,7 +72,7 @@ func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client
 	}
 }
 
-func (r *RolloutRunner) SetObjectActions(actions []ObjectAction) {
+func (r *Runner) SetObjectActions(actions []ObjectAction) {
 	for _, a := range actions {
 		r.actions[a.Name()] = a
 	}
@@ -79,7 +83,7 @@ type Config struct {
 	Feedback  feedback.Feedback
 }
 
-func (r *RolloutRunner) Execute(rolloutConfig *Config) (err error) {
+func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 	var rawConfig []byte = nil
 	if rolloutConfig != nil {
 		rawConfig = rolloutConfig.RawConfig
@@ -94,7 +98,7 @@ func (r *RolloutRunner) Execute(rolloutConfig *Config) (err error) {
 		}
 	}()
 
-	var res *renderTypes.Result
+	var res *render.Result
 	res, err = r.provider.Render(rawConfig)
 	if err != nil {
 		return fmt.Errorf("failed to render: %v", err)
@@ -105,6 +109,7 @@ func (r *RolloutRunner) Execute(rolloutConfig *Config) (err error) {
 	}
 
 	if rolloutConfig != nil && rolloutConfig.Feedback != nil {
+
 		groups := []string{}
 		for _, g := range res.Rollout.Spec.Groups {
 			groups = append(groups, g.Name)
@@ -139,7 +144,7 @@ func (r *RolloutRunner) Execute(rolloutConfig *Config) (err error) {
 	return nil
 }
 
-func (r *RolloutRunner) runStep(step *types.Step, object *unstructured.Unstructured) error {
+func (r *Runner) runStep(step *types.Step, object *unstructured.Unstructured) error {
 	err := r.executeAction(step.Action, object)
 	if err != nil {
 		return fmt.Errorf("failed to execute action (%s): %v", step.Action, err)
@@ -148,7 +153,7 @@ func (r *RolloutRunner) runStep(step *types.Step, object *unstructured.Unstructu
 	return r.checks.RunChecks(step.Success, object)
 }
 
-func (r *RolloutRunner) executeAction(actionName string, u *unstructured.Unstructured) error {
+func (r *Runner) executeAction(actionName string, u *unstructured.Unstructured) error {
 	isList := u.IsList()
 	if isList {
 		return u.EachListItem(func(o runtime.Object) error {
@@ -161,7 +166,7 @@ func (r *RolloutRunner) executeAction(actionName string, u *unstructured.Unstruc
 	return r.executeSingleAction(actionName, u)
 }
 
-func (r *RolloutRunner) executeSingleAction(actionName string, unstructured *unstructured.Unstructured) error {
+func (r *Runner) executeSingleAction(actionName string, unstructured *unstructured.Unstructured) error {
 	action := r.actions[actionName]
 	rc, err := r.client.ClientForUnstructured(unstructured)
 	if err != nil {

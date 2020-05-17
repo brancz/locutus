@@ -1,51 +1,32 @@
 package file
 
 import (
-	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/brancz/locutus/render/types"
+	"github.com/brancz/locutus/render"
 	rolloutTypes "github.com/brancz/locutus/rollout/types"
 	"github.com/go-kit/kit/log"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
-type FileProvider struct {
-	directory   string
-	rolloutFile string
-}
-
-func NewProvider() types.Provider {
-	return &FileProvider{}
-}
-
-func (p *FileProvider) RegisterFlags(s *flag.FlagSet) {
-	s.StringVar(&p.directory, "renderer.file.dir", "manifests/", "Directory to read files from.")
-	s.StringVar(&p.rolloutFile, "renderer.file.rollout", "rollout.yaml", "Plain rollout spec to read.")
-}
-
-func (p *FileProvider) NewRenderer(logger log.Logger) types.Renderer {
-	return &FileRenderer{
-		logger:      logger,
-		directory:   p.directory,
-		rolloutFile: p.rolloutFile,
-	}
-}
-
-func (p *FileProvider) Name() string {
-	return "file"
-}
-
-type FileRenderer struct {
+type Renderer struct {
 	logger      log.Logger
 	directory   string
 	rolloutFile string
 }
 
-func (r *FileRenderer) Render(_ []byte) (*types.Result, error) {
+func NewRenderer(logger log.Logger, directory, rolloutFile string) *Renderer {
+	return &Renderer{
+		logger:      logger,
+		directory:   directory,
+		rolloutFile: rolloutFile,
+	}
+}
+
+func (r *Renderer) Render(_ []byte) (*render.Result, error) {
 	objects := map[string]*unstructured.Unstructured{}
 	dir := r.directory
 
@@ -87,7 +68,7 @@ func (r *FileRenderer) Render(_ []byte) (*types.Result, error) {
 		return nil, err
 	}
 
-	return &types.Result{
+	return &render.Result{
 		Objects: objects,
 		Rollout: &rollout,
 	}, nil

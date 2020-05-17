@@ -6,26 +6,30 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
-	"net/http/pprof"
-
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	"time"
 
 	"github.com/brancz/locutus/client"
 	"github.com/brancz/locutus/config"
-	"github.com/brancz/locutus/render"
+	"github.com/brancz/locutus/render/file"
+	"github.com/brancz/locutus/render/jsonnet"
 	"github.com/brancz/locutus/rollout"
 	"github.com/brancz/locutus/rollout/checks"
 	"github.com/brancz/locutus/trigger"
+	"github.com/brancz/locutus/trigger/interval"
+	"github.com/brancz/locutus/trigger/oneoff"
+	"github.com/brancz/locutus/trigger/resource"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/run"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -57,15 +61,16 @@ func Main() int {
 		triggerProviderName string
 		configFile          string
 		renderOnly          bool
+
+		rendererFileDirectory     string
+		rendererFileRollout       string
+		rendererJsonnetEntrypoint string
+
+		triggerIntervalDuration time.Duration
+		triggerResourceConfig   string
 	)
 
-	renderers := render.Providers()
-	triggers := trigger.Providers()
-
 	s := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-
-	renderers.RegisterFlags(s)
-	triggers.RegisterFlags(s)
 	s.StringVar(&logLevel, "log-level", logLevelInfo, "Log level to use.")
 	s.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	s.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
@@ -74,7 +79,16 @@ func Main() int {
 	s.StringVar(&configFile, "config-file", "", "The config file whose content to pass to the render provider.")
 	s.BoolVar(&renderOnly, "render-only", false, "Only render manifests to be rolled out and print to STDOUT.")
 
-	s.Parse(os.Args[1:])
+	s.StringVar(&rendererFileDirectory, "renderer.file.dir", "manifests/", "Directory to read files from.")
+	s.StringVar(&rendererFileRollout, "renderer.file.rollout", "rollout.yaml", "Plain rollout spec to read.")
+	s.StringVar(&rendererJsonnetEntrypoint, "renderer.jsonnet.entrypoint", "jsonnet/main.jsonnet", "Jsonnet file to execute to render.")
+
+	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Minute, "Duration of interval in which to trigger.")
+	s.StringVar(&triggerResourceConfig, "trigger.resource.config", "", "Path to configuration of resource triggers.")
+
+	if err := s.Parse(os.Args[1:]); err != nil {
+		return 1
+	}
 
 	logger, err := logger(logLevel)
 	if err != nil {
@@ -85,45 +99,62 @@ func Main() int {
 	reg.MustRegister(prometheus.NewGoCollector())
 	reg.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 
-	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
-	if err != nil {
-		logger.Log("msg", "error building kubeconfig", "err", err)
+	var cl *client.Client
+	{
+		konfig, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+		if err != nil {
+			logger.Log("msg", "error building kubeconfig", "err", err)
+			return 1
+		}
+
+		klient, err := kubernetes.NewForConfig(konfig)
+		if err != nil {
+			logger.Log("msg", "error building kubernetes clientset", "err", err)
+			return 1
+		}
+
+		cl = client.NewClient(konfig, klient)
+		cl.WithLogger(log.With(logger, "component", "client"))
+		cl.SetUpdatePreparations(client.DefaultUpdatePreparations)
 	}
 
-	kclient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		logger.Log("msg", "error building kubernetes clientset", "err", err)
+	var renderer rollout.Renderer
+	{
+		switch renderProviderName {
+		case "jsonnet":
+			renderer = jsonnet.NewRenderer(logger, rendererJsonnetEntrypoint)
+		case "file":
+			renderer = file.NewRenderer(logger, rendererFileDirectory, rendererFileRollout)
+		default:
+			logger.Log("msg", "failed to find render provider")
+			return 1
+		}
 	}
 
-	cl := client.NewClient(log.With(logger, "component", "client"), cfg, kclient)
-	if err != nil {
-		logger.Log("msg", "failed to instantiate client", "err", err)
-		return 1
-	}
-	cl.SetUpdatePreparations(client.DefaultUpdatePreparations)
-
-	renderProvider, err := renderers.Select(renderProviderName)
-	if err != nil {
-		logger.Log("msg", "failed to find render provider", "err", err)
-		return 1
-	}
-
-	triggerProvider, err := triggers.Select(triggerProviderName)
-	if err != nil {
-		logger.Log("msg", "failed to find trigger provider", "err", err)
-		return 1
-	}
-
-	trigger, err := triggerProvider.NewTrigger(logger, cl)
-	if err != nil {
-		logger.Log("msg", "failed to create trigger", "err", err)
-		return 1
+	var trigger trigger.Trigger
+	{
+		switch triggerProviderName {
+		case "interval":
+			trigger = interval.NewTrigger(logger, triggerIntervalDuration)
+		case "oneoff":
+			trigger = oneoff.NewTrigger(logger)
+		case "resource":
+			t, err := resource.NewTrigger(logger, cl, triggerResourceConfig)
+			if err != nil {
+				logger.Log("msg", "failed to create resource trigger", "err", err)
+				return 1
+			}
+			trigger = t
+		default:
+			logger.Log("msg", "failed to find trigger provider")
+			return 1
+		}
 	}
 
 	c := checks.NewSuccessChecks(logger, cl)
-	renderer := renderProvider.NewRenderer(logger)
 	runner := rollout.NewRunner(reg, log.With(logger, "component", "rollout-runner"), cl, renderer, c, renderOnly)
 	runner.SetObjectActions(rollout.DefaultObjectActions)
+
 	trigger.Register(config.NewConfigPasser(configFile, runner))
 
 	mux := http.NewServeMux()
@@ -136,38 +167,39 @@ func Main() int {
 
 	srv := &http.Server{Handler: mux}
 
-	g := run.Group{}
-	l, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		logger.Log("msg", "listening port 8080 failed", "err", err)
-		return 1
-	}
-	g.Add(func() error {
-		return srv.Serve(l)
-	}, func(err error) {
-		l.Close()
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	g.Add(func() error {
-		return errors.Wrap(trigger.Run(ctx.Done()), "failed to run trigger")
-	}, func(err error) {
-		cancel()
-	})
-
-	term := make(chan os.Signal)
-	g.Add(func() error {
-		signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-
-		select {
-		case <-term:
-			return nil
+	var g run.Group
+	{
+		l, err := net.Listen("tcp", ":8080")
+		if err != nil {
+			logger.Log("msg", "listening port 8080 failed", "err", err)
+			return 1
 		}
-
-		return nil
-	}, func(err error) {
-		close(term)
-	})
+		g.Add(func() error {
+			return srv.Serve(l)
+		}, func(err error) {
+			l.Close()
+		})
+	}
+	{
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(func() error {
+			return errors.Wrap(trigger.Run(ctx), "failed to run trigger")
+		}, func(err error) {
+			cancel()
+		})
+	}
+	{
+		term := make(chan os.Signal)
+		g.Add(func() error {
+			signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+			select {
+			case <-term:
+				return nil
+			}
+		}, func(err error) {
+			close(term)
+		})
+	}
 
 	if err := g.Run(); err != nil {
 		logger.Log("msg", "Unhandled error received. Exiting...", "err", err)
