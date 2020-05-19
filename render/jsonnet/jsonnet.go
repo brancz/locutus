@@ -2,41 +2,23 @@ package jsonnet
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 
-	"github.com/brancz/locutus/render/types"
+	"github.com/brancz/locutus/render"
 	rolloutTypes "github.com/brancz/locutus/rollout/types"
 	"github.com/go-kit/kit/log"
-	jsonnet "github.com/google/go-jsonnet"
+	"github.com/google/go-jsonnet"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-type JsonnetProvider struct {
+type Renderer struct {
+	logger     log.Logger
 	entrypoint string
 }
 
-func NewProvider() types.Provider {
-	return &JsonnetProvider{}
-}
-
-func (p *JsonnetProvider) RegisterFlags(s *flag.FlagSet) {
-	s.StringVar(&p.entrypoint, "renderer.jsonnet.entrypoint", "jsonnet/main.jsonnet", "Jsonnet file to execute to render.")
-}
-
-func (p *JsonnetProvider) NewRenderer(logger log.Logger) types.Renderer {
-	return &JsonnetRenderer{logger: logger, entrypoint: p.entrypoint}
-}
-
-func (p *JsonnetProvider) Name() string {
-	return "jsonnet"
-}
-
-type JsonnetRenderer struct {
-	logger log.Logger
-
-	entrypoint string
+func NewRenderer(logger log.Logger, entrypoint string) *Renderer {
+	return &Renderer{logger: logger, entrypoint: entrypoint}
 }
 
 type result struct {
@@ -44,7 +26,7 @@ type result struct {
 	Rollout *rolloutTypes.Rollout             `json:"rollout"`
 }
 
-func (r *JsonnetRenderer) Render(config []byte) (*types.Result, error) {
+func (r *Renderer) Render(config []byte) (*render.Result, error) {
 	jsonnetMain := r.entrypoint
 	jpaths := []string{"vendor"}
 	jsonnetMainContent, err := ioutil.ReadFile(jsonnetMain)
@@ -74,7 +56,7 @@ func (r *JsonnetRenderer) Render(config []byte) (*types.Result, error) {
 		objects[k] = &unstructured.Unstructured{Object: v}
 	}
 
-	return &types.Result{
+	return &render.Result{
 		Objects: objects,
 		Rollout: res.Rollout,
 	}, nil
@@ -88,7 +70,6 @@ type jsonnetImporter struct {
 
 func (i *jsonnetImporter) Import(dir, importedPath string) (contents jsonnet.Contents, foundAt string, err error) {
 	if importedPath == i.virtualConfigPath {
-		
 		return jsonnet.MakeContents(string(i.configContent)), i.virtualConfigPath, nil
 	}
 

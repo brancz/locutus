@@ -39,14 +39,18 @@ type Client struct {
 	logger             log.Logger
 }
 
-func NewClient(logger log.Logger, cfg *rest.Config, kclient kubernetes.Interface) *Client {
+func NewClient(cfg *rest.Config, kclient kubernetes.Interface) *Client {
 	c := &Client{
-		logger:  logger,
+		logger:  log.NewNopLogger(),
 		kclient: kclient,
 		cfg:     cfg,
 	}
 
 	return c
+}
+
+func (c *Client) WithLogger(logger log.Logger) {
+	c.logger = logger
 }
 
 func (c *Client) SetUpdatePreparations(preparations []UpdatePreparation) {
@@ -134,7 +138,7 @@ type ResourceClient struct {
 func (rc *ResourceClient) UpdateWithCurrent(current, updated *unstructured.Unstructured, subresources ...string) (*unstructured.Unstructured, error) {
 	rc.prepareUnstructuredForUpdate(current, updated)
 
-	return rc.ResourceInterface.Update(context.TODO(), updated,v1.UpdateOptions{}, subresources...)
+	return rc.ResourceInterface.Update(context.TODO(), updated, v1.UpdateOptions{}, subresources...)
 }
 
 func (rc *ResourceClient) prepareUnstructuredForUpdate(current, updated *unstructured.Unstructured) error {

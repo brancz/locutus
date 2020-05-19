@@ -1,21 +1,13 @@
-package types
+package trigger
 
 import (
-	"flag"
+	"context"
 
-	"github.com/brancz/locutus/client"
 	"github.com/brancz/locutus/rollout"
-	"github.com/go-kit/kit/log"
 )
 
-type Provider interface {
-	NewTrigger(log.Logger, *client.Client) (Trigger, error)
-	RegisterFlags(s *flag.FlagSet)
-	Name() string
-}
-
 type Trigger interface {
-	Run(stopc <-chan struct{}) error
+	Run(context.Context) error
 	Register(Execution)
 }
 

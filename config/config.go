@@ -4,15 +4,15 @@ import (
 	"io/ioutil"
 
 	"github.com/brancz/locutus/rollout"
-	"github.com/brancz/locutus/trigger/types"
+	"github.com/brancz/locutus/trigger"
 )
 
 type ConfigPasser struct {
 	file     string
-	executor types.Execution
+	executor trigger.Execution
 }
 
-func NewConfigPasser(file string, executor types.Execution) *ConfigPasser {
+func NewConfigPasser(file string, executor trigger.Execution) *ConfigPasser {
 	return &ConfigPasser{
 		file:     file,
 		executor: executor,
