@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/brancz/locutus/render"
@@ -122,14 +123,28 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 	}
 
 	for _, group := range res.Rollout.Spec.Groups {
+		var wg sync.WaitGroup
+		errs := make(chan error, len(group.Steps))
 		for _, step := range group.Steps {
-			object, found := res.Objects[step.Object]
-			if !found {
-				return fmt.Errorf("Could not find object named %q", step.Object)
-			}
+			wg.Add(1)
 
-			err := r.runStep(step, object)
-			if err != nil {
+			go func(step *types.Step) {
+				defer wg.Done()
+
+				object, found := res.Objects[step.Object]
+				if !found {
+					errs <- fmt.Errorf("could not find object named %q", step.Object)
+					return
+				}
+				if err := r.runStep(step, object); err != nil {
+					errs <- err
+					return
+				}
+			}(step)
+
+			wg.Wait()
+
+			if err := <-errs; err != nil {
 				return errors.Wrap(err, "failed to run step")
 			}
 		}
