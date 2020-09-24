@@ -7,17 +7,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brancz/locutus/client"
+	"github.com/brancz/locutus/feedback"
 	"github.com/brancz/locutus/render"
+	"github.com/brancz/locutus/rollout/checks"
+	"github.com/brancz/locutus/rollout/types"
 	"github.com/go-kit/kit/log"
+	"github.com/hashicorp/go-multierror"
+	_ "github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/brancz/locutus/client"
-	"github.com/brancz/locutus/feedback"
-	"github.com/brancz/locutus/rollout/checks"
-	"github.com/brancz/locutus/rollout/types"
 )
 
 type Renderer interface {
@@ -124,7 +125,8 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 
 	for _, group := range res.Rollout.Spec.Groups {
 		var wg sync.WaitGroup
-		errs := make(chan error, len(group.Steps))
+		var errsLock sync.Mutex
+		var errs error
 		for _, step := range group.Steps {
 			wg.Add(1)
 
@@ -133,19 +135,23 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 
 				object, found := res.Objects[step.Object]
 				if !found {
-					errs <- fmt.Errorf("could not find object named %q", step.Object)
+					errsLock.Lock()
+					errs = multierror.Append(errs, fmt.Errorf("could not find object named %q", step.Object))
+					errsLock.Unlock()
 					return
 				}
 				if err := r.runStep(step, object); err != nil {
-					errs <- err
+					errsLock.Lock()
+					errs = multierror.Append(errs, err)
+					errsLock.Unlock()
 					return
 				}
 			}(step)
 
 			wg.Wait()
 
-			if err := <-errs; err != nil {
-				return errors.Wrap(err, "failed to run step")
+			if errs != nil {
+				return errors.Wrap(errs, "failed to run step")
 			}
 		}
 		if rolloutConfig != nil && rolloutConfig.Feedback != nil {
