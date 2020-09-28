@@ -202,6 +202,8 @@ func Main() int {
 		})
 	}
 
+	level.Info(logger).Log("msg", "running", "renderer", renderProviderName, "trigger", triggerProviderName)
+
 	if err := g.Run(); err != nil {
 		logger.Log("msg", "Unhandled error received. Exiting...", "err", err)
 		return 1
