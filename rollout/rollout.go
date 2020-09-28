@@ -7,18 +7,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/hashicorp/go-multierror"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/brancz/locutus/client"
 	"github.com/brancz/locutus/feedback"
 	"github.com/brancz/locutus/render"
 	"github.com/brancz/locutus/rollout/checks"
 	"github.com/brancz/locutus/rollout/types"
-	"github.com/go-kit/kit/log"
-	"github.com/hashicorp/go-multierror"
-	_ "github.com/hashicorp/go-multierror"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
 type Renderer interface {
@@ -148,12 +148,13 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 				}
 			}(step)
 
-			wg.Wait()
-
 			if errs != nil {
 				return errors.Wrap(errs, "failed to run step")
 			}
 		}
+
+		wg.Wait()
+
 		if rolloutConfig != nil && rolloutConfig.Feedback != nil {
 			err := rolloutConfig.Feedback.SetCondition(group.Name, feedback.StatusConditionFinished)
 			if err != nil {
