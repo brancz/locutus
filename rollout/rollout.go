@@ -148,12 +148,12 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 				}
 			}(step)
 
-			if errs != nil {
-				return errors.Wrap(errs, "failed to run step")
-			}
 		}
-
 		wg.Wait()
+
+		if errs != nil {
+			return errors.Wrap(errs, "failed to run step")
+		}
 
 		if rolloutConfig != nil && rolloutConfig.Feedback != nil {
 			err := rolloutConfig.Feedback.SetCondition(group.Name, feedback.StatusConditionFinished)
