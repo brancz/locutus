@@ -63,7 +63,8 @@ func (c *Client) ClientForUnstructured(u *unstructured.Unstructured) (*ResourceC
 }
 
 func (c *Client) ClientFor(apiVersion, kind, namespace string) (*ResourceClient, error) {
-	apiResourceList, apiResource, err := c.getAPIResource(apiVersion, kind)
+
+	apiResourceList, err := c.kclient.Discovery().ServerResourcesForGroupVersion(apiVersion)
 	if err != nil {
 		return nil, errors.Wrapf(err, "discovering resource information failed for %s in %s", kind, apiVersion)
 	}
@@ -78,10 +79,18 @@ func (c *Client) ClientFor(apiVersion, kind, namespace string) (*ResourceClient,
 		return nil, errors.Wrapf(err, "parsing GroupVersion failed %s", apiResourceList.GroupVersion)
 	}
 
+	resourceName := ""
+	for _, r := range apiResourceList.APIResources {
+		if r.Kind == kind {
+			resourceName = r.Name
+			break
+		}
+	}
+
 	gvr := schema.GroupVersionResource{
 		Group:    gv.Group,
 		Version:  gv.Version,
-		Resource: apiResource.Name,
+		Resource: resourceName,
 	}
 
 	return &ResourceClient{ResourceInterface: dc.Resource(gvr).Namespace(namespace), updatePreparations: c.updatePreparations}, nil
