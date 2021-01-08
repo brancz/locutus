@@ -12,7 +12,7 @@ type Trigger interface {
 }
 
 type Execution interface {
-	Execute(*rollout.Config) error
+	Execute(context.Context, *rollout.Config) error
 }
 
 type ExecutionRegister struct {
@@ -27,9 +27,9 @@ func (r *ExecutionRegister) Register(execution Execution) {
 	r.executions = append(r.executions, execution)
 }
 
-func (r *ExecutionRegister) Execute(config *rollout.Config) error {
+func (r *ExecutionRegister) Execute(ctx context.Context, config *rollout.Config) error {
 	for _, e := range r.executions {
-		err := e.Execute(config)
+		err := e.Execute(ctx, config)
 		if err != nil {
 			return err
 		}

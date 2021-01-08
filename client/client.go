@@ -144,10 +144,10 @@ type ResourceClient struct {
 	updatePreparations []UpdatePreparation
 }
 
-func (rc *ResourceClient) UpdateWithCurrent(current, updated *unstructured.Unstructured, subresources ...string) (*unstructured.Unstructured, error) {
+func (rc *ResourceClient) UpdateWithCurrent(ctx context.Context, current, updated *unstructured.Unstructured, subresources ...string) (*unstructured.Unstructured, error) {
 	rc.prepareUnstructuredForUpdate(current, updated)
 
-	return rc.ResourceInterface.Update(context.TODO(), updated, v1.UpdateOptions{}, subresources...)
+	return rc.ResourceInterface.Update(ctx, updated, v1.UpdateOptions{}, subresources...)
 }
 
 func (rc *ResourceClient) prepareUnstructuredForUpdate(current, updated *unstructured.Unstructured) error {

@@ -132,6 +132,7 @@ func Main() int {
 		}
 	}
 
+	ctx := context.Background()
 	var trigger trigger.Trigger
 	{
 		switch triggerProviderName {
@@ -140,7 +141,7 @@ func Main() int {
 		case "oneoff":
 			trigger = oneoff.NewTrigger(logger)
 		case "resource":
-			t, err := resource.NewTrigger(logger, cl, triggerResourceConfig)
+			t, err := resource.NewTrigger(ctx, logger, cl, triggerResourceConfig)
 			if err != nil {
 				logger.Log("msg", "failed to create resource trigger", "err", err)
 				return 1
@@ -182,7 +183,7 @@ func Main() int {
 		})
 	}
 	{
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 		g.Add(func() error {
 			return errors.Wrap(trigger.Run(ctx), "failed to run trigger")
 		}, func(err error) {
