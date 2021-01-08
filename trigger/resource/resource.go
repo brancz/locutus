@@ -38,6 +38,7 @@ type ResourceTriggerConfig struct {
 	Name                     string                    `json:"name"`
 	Kind                     string                    `json:"kind"`
 	APIVersion               string                    `json:"apiVersion"`
+	Namespace                string                    `json:"namespace,omitempty"`
 	KeyTransformationConfigs []KeyTransformationConfig `json:"keyTransformations"`
 }
 
@@ -77,7 +78,12 @@ func NewTrigger(logger log.Logger, client *client.Client, configFile string) (*T
 	}
 
 	for _, r := range config.Resources {
-		c, err := client.ClientFor(r.APIVersion, r.Kind, "")
+		key := r.Name
+		if len(r.Namespace) > 0 {
+			key = r.Namespace + "/" + r.Name
+		}
+
+		c, err := client.ClientFor(r.APIVersion, r.Kind, r.Namespace)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create client for %s in %s", r.Kind, r.APIVersion)
 		}
@@ -97,8 +103,7 @@ func NewTrigger(logger log.Logger, client *client.Client, configFile string) (*T
 			return nil, errors.Wrapf(err, "failed to create resource handlers for %s in %s", r.Kind, r.APIVersion)
 		}
 		inf.AddEventHandler(h)
-
-		t.infs[r.Name] = inf
+		t.infs[key] = inf
 	}
 
 	t.inf = t.infs[config.MainResource]
