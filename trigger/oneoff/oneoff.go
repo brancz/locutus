@@ -19,5 +19,5 @@ func NewTrigger(logger log.Logger) trigger.Trigger {
 }
 
 func (t *Trigger) Run(ctx context.Context) error {
-	return t.Execute(nil)
+	return t.Execute(ctx, nil)
 }

@@ -74,8 +74,8 @@ func extractStatusCondition(v map[string]interface{}) *StatusCondition {
 }
 
 type Feedback interface {
-	Initialize(groups []string) error
-	SetCondition(name string, currentStatus CurrentStatus) error
+	Initialize(ctx context.Context, groups []string) error
+	SetCondition(ctx context.Context, name string, currentStatus CurrentStatus) error
 }
 
 type feedback struct {
@@ -97,13 +97,13 @@ func NewFeedback(logger log.Logger, client *client.Client, u *unstructured.Unstr
 	}
 }
 
-func (f *feedback) Initialize(groups []string) error {
+func (f *feedback) Initialize(ctx context.Context, groups []string) error {
 	level.Debug(f.logger).Log("msg", "initializing status", "namespace", f.obj.GetNamespace(), "name", f.obj.GetName(), "kind", f.obj.GetKind(), "apiVersion", f.obj.GetAPIVersion())
 	f.initializeStatus(groups)
-	return f.updateStatus()
+	return f.updateStatus(ctx)
 }
 
-func (f *feedback) SetCondition(name string, currentStatus CurrentStatus) error {
+func (f *feedback) SetCondition(ctx context.Context, name string, currentStatus CurrentStatus) error {
 	level.Debug(f.logger).Log("msg", "setting condition status", "namespace", f.obj.GetNamespace(), "name", f.obj.GetName(), "kind", f.obj.GetKind(), "apiVersion", f.obj.GetAPIVersion(), "condition", name, "status", currentStatus)
 	for i, c := range f.currentStatus.Conditions {
 		if c.Name == name {
@@ -117,10 +117,10 @@ func (f *feedback) SetCondition(name string, currentStatus CurrentStatus) error 
 		}
 	}
 
-	return f.updateStatus()
+	return f.updateStatus(ctx)
 }
 
-func (f *feedback) updateStatus() error {
+func (f *feedback) updateStatus(ctx context.Context) error {
 	if reflect.DeepEqual(f.oldStatus, f.currentStatus) {
 		return nil
 	}
@@ -141,7 +141,7 @@ func (f *feedback) updateStatus() error {
 		return err
 	}
 
-	f.obj, err = c.UpdateStatus(context.TODO(), &unstructured.Unstructured{Object: status}, metav1.UpdateOptions{})
+	f.obj, err = c.UpdateStatus(ctx, &unstructured.Unstructured{Object: status}, metav1.UpdateOptions{})
 	return err
 }
 

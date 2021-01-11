@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"io/ioutil"
 
 	"github.com/brancz/locutus/rollout"
@@ -19,7 +20,7 @@ func NewConfigPasser(file string, executor trigger.Execution) *ConfigPasser {
 	}
 }
 
-func (p *ConfigPasser) Execute(rolloutConfig *rollout.Config) error {
+func (p *ConfigPasser) Execute(ctx context.Context, rolloutConfig *rollout.Config) error {
 	var err error
 
 	if rolloutConfig == nil {
@@ -31,7 +32,7 @@ func (p *ConfigPasser) Execute(rolloutConfig *rollout.Config) error {
 		return err
 	}
 
-	return p.executor.Execute(rolloutConfig)
+	return p.executor.Execute(ctx, rolloutConfig)
 }
 
 func (p *ConfigPasser) readConfig(rolloutConfig *rollout.Config) ([]byte, error) {

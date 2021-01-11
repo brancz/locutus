@@ -75,7 +75,7 @@ func NewFieldCheck(logger log.Logger, client *client.Client, comparisons []*type
 	}, nil
 }
 
-func (c *FieldCheck) Execute(u *unstructured.Unstructured) error {
+func (c *FieldCheck) Execute(ctx context.Context, u *unstructured.Unstructured) error {
 	level.Debug(c.logger).Log("msg", "starting field comparison success check", "name", u.GetName(), "namespace", u.GetNamespace())
 	name := u.GetName()
 	namespace := u.GetNamespace()
@@ -87,7 +87,7 @@ func (c *FieldCheck) Execute(u *unstructured.Unstructured) error {
 
 	err = wait.Poll(5*time.Second, time.Hour, wait.ConditionFunc(func() (bool, error) {
 		level.Debug(c.logger).Log("msg", "starting poll", "name", name, "namespace", namespace)
-		outerValues, err := c.currentValues(rc, name)
+		outerValues, err := c.currentValues(ctx, rc, name)
 		if err != nil {
 			return false, errors.Wrap(err, "failed to extract periodic status information")
 		}
@@ -103,7 +103,7 @@ func (c *FieldCheck) Execute(u *unstructured.Unstructured) error {
 
 		err = wait.Poll(5*time.Second, 5*time.Minute, wait.ConditionFunc(func() (bool, error) {
 			level.Debug(c.logger).Log("msg", "check whether fields have changed", "name", name, "namespace", namespace)
-			innerValues, err := c.currentValues(rc, name)
+			innerValues, err := c.currentValues(ctx, rc, name)
 			if err != nil {
 				return false, errors.Wrap(err, "failed to extract updated status information")
 			}
@@ -130,8 +130,8 @@ func (c *FieldCheck) Execute(u *unstructured.Unstructured) error {
 	return err
 }
 
-func (c *FieldCheck) currentValues(rc *client.ResourceClient, name string) (map[string]interface{}, error) {
-	u, err := rc.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *FieldCheck) currentValues(ctx context.Context, rc *client.ResourceClient, name string) (map[string]interface{}, error) {
+	u, err := rc.Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

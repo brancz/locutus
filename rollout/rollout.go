@@ -1,6 +1,7 @@
 package rollout
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -85,7 +86,7 @@ type Config struct {
 	Feedback  feedback.Feedback
 }
 
-func (r *Runner) Execute(rolloutConfig *Config) (err error) {
+func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error) {
 	var rawConfig []byte = nil
 	if rolloutConfig != nil {
 		rawConfig = rolloutConfig.RawConfig
@@ -117,7 +118,7 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 			groups = append(groups, g.Name)
 		}
 
-		err := rolloutConfig.Feedback.Initialize(groups)
+		err := rolloutConfig.Feedback.Initialize(ctx, groups)
 		if err != nil {
 			return err
 		}
@@ -140,7 +141,7 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 					errsLock.Unlock()
 					return
 				}
-				if err := r.runStep(step, object); err != nil {
+				if err := r.runStep(ctx, step, object); err != nil {
 					errsLock.Lock()
 					errs = multierror.Append(errs, err)
 					errsLock.Unlock()
@@ -156,7 +157,7 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 		}
 
 		if rolloutConfig != nil && rolloutConfig.Feedback != nil {
-			err := rolloutConfig.Feedback.SetCondition(group.Name, feedback.StatusConditionFinished)
+			err := rolloutConfig.Feedback.SetCondition(ctx, group.Name, feedback.StatusConditionFinished)
 			if err != nil {
 				return err
 			}
@@ -166,34 +167,34 @@ func (r *Runner) Execute(rolloutConfig *Config) (err error) {
 	return nil
 }
 
-func (r *Runner) runStep(step *types.Step, object *unstructured.Unstructured) error {
-	err := r.executeAction(step.Action, object)
+func (r *Runner) runStep(ctx context.Context, step *types.Step, object *unstructured.Unstructured) error {
+	err := r.executeAction(ctx, step.Action, object)
 	if err != nil {
 		return fmt.Errorf("failed to execute action (%s): %v", step.Action, err)
 	}
 
-	return r.checks.RunChecks(step.Success, object)
+	return r.checks.RunChecks(ctx, step.Success, object)
 }
 
-func (r *Runner) executeAction(actionName string, u *unstructured.Unstructured) error {
+func (r *Runner) executeAction(ctx context.Context, actionName string, u *unstructured.Unstructured) error {
 	isList := u.IsList()
 	if isList {
 		return u.EachListItem(func(o runtime.Object) error {
 			u := o.(*unstructured.Unstructured)
 
-			return r.executeAction(actionName, u)
+			return r.executeAction(ctx, actionName, u)
 		})
 	}
 
-	return r.executeSingleAction(actionName, u)
+	return r.executeSingleAction(ctx, actionName, u)
 }
 
-func (r *Runner) executeSingleAction(actionName string, unstructured *unstructured.Unstructured) error {
+func (r *Runner) executeSingleAction(ctx context.Context, actionName string, unstructured *unstructured.Unstructured) error {
 	action := r.actions[actionName]
 	rc, err := r.client.ClientForUnstructured(unstructured)
 	if err != nil {
 		return err
 	}
 
-	return action.Execute(rc, unstructured)
+	return action.Execute(ctx, rc, unstructured)
 }

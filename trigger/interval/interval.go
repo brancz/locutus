@@ -29,7 +29,7 @@ func (t *Trigger) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			t.Logger.Log("msg", "interval triggered")
-			t.Execute(nil)
+			t.Execute(ctx, nil)
 		}
 	}
 }

@@ -59,7 +59,7 @@ type Trigger struct {
 	queue workqueue.RateLimitingInterface
 }
 
-func NewTrigger(logger log.Logger, client *client.Client, configFile string) (*Trigger, error) {
+func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, configFile string) (*Trigger, error) {
 	t := &Trigger{
 		logger: logger,
 		client: client,
@@ -90,10 +90,10 @@ func NewTrigger(logger log.Logger, client *client.Client, configFile string) (*T
 		inf := cache.NewSharedIndexInformer(
 			&cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					return c.List(context.TODO(), options)
+					return c.List(ctx, options)
 				},
 				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					return c.Watch(context.TODO(), options)
+					return c.Watch(ctx, options)
 				},
 			},
 			&unstructured.Unstructured{}, resyncPeriod, cache.Indexers{},
@@ -116,7 +116,7 @@ func (p *Trigger) Run(ctx context.Context) error {
 
 	p.logger.Log("msg", "resources trigger started")
 
-	go p.worker()
+	go p.worker(ctx)
 	for _, inf := range p.infs {
 		go func(informer cache.SharedIndexInformer) {
 			informer.Run(ctx.Done())
@@ -151,19 +151,19 @@ func (p *Trigger) enqueue(obj interface{}) {
 	p.queue.Add(key)
 }
 
-func (p *Trigger) worker() {
-	for p.processNextWorkItem() {
+func (p *Trigger) worker(ctx context.Context) {
+	for p.processNextWorkItem(ctx) {
 	}
 }
 
-func (p *Trigger) processNextWorkItem() bool {
+func (p *Trigger) processNextWorkItem(ctx context.Context) bool {
 	key, quit := p.queue.Get()
 	if quit {
 		return false
 	}
 	defer p.queue.Done(key)
 
-	err := p.sync(key.(string))
+	err := p.sync(ctx, key.(string))
 	if err == nil {
 		p.queue.Forget(key)
 		return true
@@ -177,7 +177,7 @@ func (p *Trigger) processNextWorkItem() bool {
 	return true
 }
 
-func (p *Trigger) sync(key string) error {
+func (p *Trigger) sync(ctx context.Context, key string) error {
 	level.Info(p.logger).Log("msg", "sync triggered", "key", key)
 
 	obj, exists, err := p.inf.GetIndexer().GetByKey(key)
@@ -193,7 +193,7 @@ func (p *Trigger) sync(key string) error {
 		return err
 	}
 
-	return p.Execute(&rollout.Config{
+	return p.Execute(ctx, &rollout.Config{
 		RawConfig: cfg,
 		Feedback:  feedback.NewFeedback(p.logger, p.client, obj.(*unstructured.Unstructured)),
 	})
