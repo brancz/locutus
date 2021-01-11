@@ -27,17 +27,39 @@ type Step struct {
 }
 
 type SuccessDefinition struct {
-	FieldComparisons []*FieldComparisonSuccessDefinition `json:"fieldComparisons"`
+	FieldCheck            []*FieldCheckDefinition            `json:"fieldCheck"`
+	PrometheusMetricCheck []*PrometheusMetricCheckDefinition `json:"prometheusMetricCheck"`
 }
 
-type FieldComparisonSuccessDefinition struct {
-	Name    string                `json:"name"`
-	Path    string                `json:"path"`
-	Default interface{}           `json:"default"`
-	Value   *FieldComparisonValue `json:"value"`
+type FieldCheckDefinition struct {
+	Name    string           `json:"name"`
+	Path    string           `json:"path"`
+	Default interface{}      `json:"default"`
+	Value   *FieldCheckValue `json:"value"`
 }
 
 type FieldComparisonValue struct {
 	Path   string      `json:"path"`
 	Static interface{} `json:"static"`
 }
+
+type PrometheusMetricCheckDefinition struct {
+	Query        string                               `json:"query"`
+	Expectations []*PrometheusInstantQueryExpectation `json:"expectations"`
+}
+
+type PrometheusInstantQueryExpectation struct {
+	Each *PrometheusVectorEntryExpectation `json:"each"`
+}
+
+type PrometheusVectorEntryExpectation struct {
+	Type  PrometheusVectorEntryExpectationType `json:"type"`
+	Value float64
+}
+
+type PrometheusVectorEntryExpectationType string
+
+const (
+	PrometheusVectorEntryGTE = "PrometheusVectorEntryGreaterThanOrEqual"
+	PrometheusVectorEntryLTE = "PrometheusVectorEntryLessThanOrEqual"
+)

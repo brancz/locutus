@@ -1,0 +1,13 @@
+apiVersion: workflow.kubernetes.io/v1alpha1
+kind: Rollout
+metadata:
+  name: observatorium
+spec:
+  groups:
+  - steps:
+    - object: "observatorium/thanos-receive.json"
+      action: "StatefulSetPartitionedRollout"
+      statefulSetPartitionedRollout:
+        advanceAmount: 1
+        when:
+        - query: sum(http_requests_total{namespace="{namespace}", pod="{pod}"}) > 1000
