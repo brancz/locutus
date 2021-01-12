@@ -39,6 +39,7 @@ type ResourceTriggerConfig struct {
 	Kind                     string                    `json:"kind"`
 	APIVersion               string                    `json:"apiVersion"`
 	Namespace                string                    `json:"namespace,omitempty"`
+	LabelSelector            *metav1.LabelSelector     `json:"labelSelector"`
 	KeyTransformationConfigs []KeyTransformationConfig `json:"keyTransformations"`
 }
 
@@ -85,9 +86,15 @@ func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, c
 		inf := cache.NewSharedIndexInformer(
 			&cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+					if r.LabelSelector != nil {
+						options.LabelSelector = r.LabelSelector.String()
+					}
 					return c.List(ctx, options)
 				},
 				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+					if r.LabelSelector != nil {
+						options.LabelSelector = r.LabelSelector.String()
+					}
 					return c.Watch(ctx, options)
 				},
 			},
