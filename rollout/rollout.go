@@ -120,7 +120,7 @@ func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error)
 
 		err := rolloutConfig.Feedback.Initialize(ctx, groups)
 		if err != nil {
-			return err
+			return fmt.Errorf("initialize feedback: %w", err)
 		}
 	}
 

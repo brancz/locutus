@@ -58,6 +58,7 @@ func Main() int {
 		masterURL           string
 		kubeconfig          string
 		renderProviderName  string
+		writeStatus         bool
 		triggerProviderName string
 		configFile          string
 		renderOnly          bool
@@ -85,6 +86,7 @@ func Main() int {
 
 	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Minute, "Duration of interval in which to trigger.")
 	s.StringVar(&triggerResourceConfig, "trigger.resource.config", "", "Path to configuration of resource triggers.")
+	s.BoolVar(&writeStatus, "trigger.resource.write-status", true, "Whether to write status back to the originating resource.")
 
 	if err := s.Parse(os.Args[1:]); err != nil {
 		return 1

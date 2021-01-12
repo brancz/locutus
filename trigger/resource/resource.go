@@ -58,14 +58,23 @@ type Trigger struct {
 	infs  map[string]cache.SharedIndexInformer
 	inf   cache.SharedIndexInformer
 	queue workqueue.RateLimitingInterface
+
+	writeStatus bool
 }
 
-func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, configFile string) (*Trigger, error) {
+func NewTrigger(
+	ctx context.Context,
+	logger log.Logger,
+	client *client.Client,
+	configFile string,
+	writeStatus bool,
+) (*Trigger, error) {
 	t := &Trigger{
-		logger: logger,
-		client: client,
-		queue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resource"),
-		infs:   map[string]cache.SharedIndexInformer{},
+		logger:      logger,
+		client:      client,
+		queue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resource"),
+		infs:        map[string]cache.SharedIndexInformer{},
+		writeStatus: writeStatus,
 	}
 
 	f, err := os.Open(configFile)
@@ -195,8 +204,13 @@ func (p *Trigger) sync(ctx context.Context, key string) error {
 		return err
 	}
 
+	var f feedback.Feedback = nil
+	if p.writeStatus {
+		f = feedback.NewFeedback(p.logger, p.client, obj.(*unstructured.Unstructured))
+	}
+
 	return p.Execute(ctx, &rollout.Config{
 		RawConfig: cfg,
-		Feedback:  feedback.NewFeedback(p.logger, p.client, obj.(*unstructured.Unstructured)),
+		Feedback:  f,
 	})
 }
