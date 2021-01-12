@@ -78,11 +78,6 @@ func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, c
 	}
 
 	for _, r := range config.Resources {
-		key := r.Name
-		if len(r.Namespace) > 0 {
-			key = r.Namespace + "/" + r.Name
-		}
-
 		c, err := client.ClientFor(r.APIVersion, r.Kind, r.Namespace)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create client for %s in %s", r.Kind, r.APIVersion)
@@ -103,7 +98,7 @@ func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, c
 			return nil, errors.Wrapf(err, "failed to create resource handlers for %s in %s", r.Kind, r.APIVersion)
 		}
 		inf.AddEventHandler(h)
-		t.infs[key] = inf
+		t.infs[r.Name] = inf
 	}
 
 	t.inf = t.infs[config.MainResource]
