@@ -39,6 +39,7 @@ type ResourceTriggerConfig struct {
 	Kind                     string                    `json:"kind"`
 	APIVersion               string                    `json:"apiVersion"`
 	Namespace                string                    `json:"namespace,omitempty"`
+	LabelSelector            *metav1.LabelSelector     `json:"labelSelector"`
 	KeyTransformationConfigs []KeyTransformationConfig `json:"keyTransformations"`
 }
 
@@ -57,14 +58,23 @@ type Trigger struct {
 	infs  map[string]cache.SharedIndexInformer
 	inf   cache.SharedIndexInformer
 	queue workqueue.RateLimitingInterface
+
+	writeStatus bool
 }
 
-func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, configFile string) (*Trigger, error) {
+func NewTrigger(
+	ctx context.Context,
+	logger log.Logger,
+	client *client.Client,
+	configFile string,
+	writeStatus bool,
+) (*Trigger, error) {
 	t := &Trigger{
-		logger: logger,
-		client: client,
-		queue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resource"),
-		infs:   map[string]cache.SharedIndexInformer{},
+		logger:      logger,
+		client:      client,
+		queue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resource"),
+		infs:        map[string]cache.SharedIndexInformer{},
+		writeStatus: writeStatus,
 	}
 
 	f, err := os.Open(configFile)
@@ -78,6 +88,7 @@ func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, c
 	}
 
 	for _, r := range config.Resources {
+		level.Debug(t.logger).Log("msg", "creating client for use with resource trigger", "resource-name", r.Name, "apiVersion", r.APIVersion, "kind", r.Kind, "namespace", r.Namespace)
 		c, err := client.ClientFor(r.APIVersion, r.Kind, r.Namespace)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create client for %s in %s", r.Kind, r.APIVersion)
@@ -85,9 +96,15 @@ func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, c
 		inf := cache.NewSharedIndexInformer(
 			&cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+					if r.LabelSelector != nil {
+						options.LabelSelector = r.LabelSelector.String()
+					}
 					return c.List(ctx, options)
 				},
 				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+					if r.LabelSelector != nil {
+						options.LabelSelector = r.LabelSelector.String()
+					}
 					return c.Watch(ctx, options)
 				},
 			},
@@ -106,13 +123,26 @@ func NewTrigger(ctx context.Context, logger log.Logger, client *client.Client, c
 	return t, nil
 }
 
+func (p *Trigger) InputSources() map[string]func() ([]byte, error) {
+	res := map[string]func() ([]byte, error){}
+	for resource, inf := range p.infs {
+		res[resource+"/list"] = func() ([]byte, error) {
+			return json.Marshal(inf.GetStore().List())
+		}
+	}
+
+	return res
+}
+
 func (p *Trigger) Run(ctx context.Context) error {
 	defer p.queue.ShutDown()
 
 	p.logger.Log("msg", "resources trigger started")
 
 	go p.worker(ctx)
-	for _, inf := range p.infs {
+	for resource, inf := range p.infs {
+		level.Debug(p.logger).Log("msg", "starting informer", "resource-name", resource)
+
 		go func(informer cache.SharedIndexInformer) {
 			informer.Run(ctx.Done())
 		}(inf)
@@ -164,7 +194,7 @@ func (p *Trigger) processNextWorkItem(ctx context.Context) bool {
 		return true
 	}
 
-	level.Warn(p.logger).Log("msg", "sync failed", "key", key, "err", err)
+	level.Error(p.logger).Log("msg", "sync failed", "key", key, "err", err)
 
 	utilruntime.HandleError(errors.Wrap(err, fmt.Sprintf("Sync %q failed", key)))
 	p.queue.AddRateLimited(key)
@@ -173,7 +203,7 @@ func (p *Trigger) processNextWorkItem(ctx context.Context) bool {
 }
 
 func (p *Trigger) sync(ctx context.Context, key string) error {
-	level.Info(p.logger).Log("msg", "sync triggered", "key", key)
+	level.Debug(p.logger).Log("msg", "sync triggered", "key", key)
 
 	obj, exists, err := p.inf.GetIndexer().GetByKey(key)
 	if err != nil {
@@ -188,8 +218,13 @@ func (p *Trigger) sync(ctx context.Context, key string) error {
 		return err
 	}
 
+	var f feedback.Feedback = nil
+	if p.writeStatus {
+		f = feedback.NewFeedback(p.logger, p.client, obj.(*unstructured.Unstructured))
+	}
+
 	return p.Execute(ctx, &rollout.Config{
 		RawConfig: cfg,
-		Feedback:  feedback.NewFeedback(p.logger, p.client, obj.(*unstructured.Unstructured)),
+		Feedback:  f,
 	})
 }

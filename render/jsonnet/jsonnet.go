@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"sort"
+	"strings"
 
 	"github.com/brancz/locutus/render"
 	rolloutTypes "github.com/brancz/locutus/rollout/types"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/google/go-jsonnet"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -15,10 +18,19 @@ import (
 type Renderer struct {
 	logger     log.Logger
 	entrypoint string
+	sources    map[string]func() ([]byte, error)
 }
 
-func NewRenderer(logger log.Logger, entrypoint string) *Renderer {
-	return &Renderer{logger: logger, entrypoint: entrypoint}
+func NewRenderer(
+	logger log.Logger,
+	entrypoint string,
+	sources map[string]func() ([]byte, error),
+) *Renderer {
+	return &Renderer{
+		logger:     logger,
+		entrypoint: entrypoint,
+		sources:    sources,
+	}
 }
 
 type result struct {
@@ -36,6 +48,8 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 
 	vm := jsonnet.MakeVM()
 	vm.Importer(&jsonnetImporter{
+		logger:            r.logger,
+		sources:           r.sources,
 		fileImporter:      &jsonnet.FileImporter{JPaths: jpaths},
 		configContent:     config,
 		virtualConfigPath: "generic-operator/config",
@@ -63,14 +77,39 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 }
 
 type jsonnetImporter struct {
+	logger            log.Logger
 	fileImporter      *jsonnet.FileImporter
 	configContent     []byte
 	virtualConfigPath string
+	sources           map[string]func() ([]byte, error)
 }
 
 func (i *jsonnetImporter) Import(dir, importedPath string) (contents jsonnet.Contents, foundAt string, err error) {
 	if importedPath == i.virtualConfigPath {
 		return jsonnet.MakeContents(string(i.configContent)), i.virtualConfigPath, nil
+	}
+
+	sourceNames := []string{}
+	for k := range i.sources {
+		sourceNames = append(sourceNames, k)
+	}
+	sort.Strings(sourceNames)
+	level.Debug(i.logger).Log("msg", "available dynamic sources", "sources", strings.Join(sourceNames, ","))
+
+	if strings.HasPrefix(importedPath, "locutus-runtime/") {
+		p := strings.TrimPrefix(importedPath, "locutus-runtime/")
+		f, found := i.sources[p]
+		if found {
+			b, err := f()
+			if err != nil {
+				return jsonnet.Contents{}, "", err
+			}
+
+			key := "locutus-runtime/" + p
+			level.Debug(i.logger).Log("msg", "rendering dynamic import", "import-path", key, "content", string(b))
+
+			return jsonnet.MakeContents(string(b)), key, nil
+		}
 	}
 
 	return i.fileImporter.Import(dir, importedPath)

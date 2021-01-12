@@ -58,6 +58,7 @@ func Main() int {
 		masterURL           string
 		kubeconfig          string
 		renderProviderName  string
+		writeStatus         bool
 		triggerProviderName string
 		configFile          string
 		renderOnly          bool
@@ -85,6 +86,7 @@ func Main() int {
 
 	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Minute, "Duration of interval in which to trigger.")
 	s.StringVar(&triggerResourceConfig, "trigger.resource.config", "", "Path to configuration of resource triggers.")
+	s.BoolVar(&writeStatus, "trigger.resource.write-status", true, "Whether to write status back to the originating resource.")
 
 	if err := s.Parse(os.Args[1:]); err != nil {
 		return 1
@@ -119,18 +121,7 @@ func Main() int {
 		cl.SetUpdatePreparations(client.DefaultUpdatePreparations)
 	}
 
-	var renderer rollout.Renderer
-	{
-		switch renderProviderName {
-		case "jsonnet":
-			renderer = jsonnet.NewRenderer(logger, rendererJsonnetEntrypoint)
-		case "file":
-			renderer = file.NewRenderer(logger, rendererFileDirectory, rendererFileRollout)
-		default:
-			logger.Log("msg", "failed to find render provider")
-			return 1
-		}
-	}
+	sources := map[string]func() ([]byte, error){}
 
 	ctx := context.Background()
 	var trigger trigger.Trigger
@@ -141,14 +132,34 @@ func Main() int {
 		case "oneoff":
 			trigger = oneoff.NewTrigger(logger)
 		case "resource":
-			t, err := resource.NewTrigger(ctx, logger, cl, triggerResourceConfig)
+			t, err := resource.NewTrigger(ctx, logger, cl, triggerResourceConfig, writeStatus)
 			if err != nil {
 				logger.Log("msg", "failed to create resource trigger", "err", err)
 				return 1
 			}
+
+			triggerSources := t.InputSources()
+			for name, sourceFunc := range triggerSources {
+				level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
+				sources[name] = sourceFunc
+			}
+
 			trigger = t
 		default:
 			logger.Log("msg", "failed to find trigger provider")
+			return 1
+		}
+	}
+
+	var renderer rollout.Renderer
+	{
+		switch renderProviderName {
+		case "jsonnet":
+			renderer = jsonnet.NewRenderer(logger, rendererJsonnetEntrypoint, sources)
+		case "file":
+			renderer = file.NewRenderer(logger, rendererFileDirectory, rendererFileRollout)
+		default:
+			logger.Log("msg", "failed to find render provider")
 			return 1
 		}
 	}
