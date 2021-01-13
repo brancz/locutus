@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -141,6 +142,9 @@ func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error)
 					errsLock.Unlock()
 					return
 				}
+
+				level.Debug(r.logger).Log("msg", "running action", "group", group.Name, "action", step.Action, "object", step.Object)
+
 				if err := r.runStep(ctx, step, object); err != nil {
 					errsLock.Lock()
 					errs = multierror.Append(errs, err)
