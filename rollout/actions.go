@@ -30,6 +30,9 @@ func (a *CreateOrUpdateObjectAction) Execute(ctx context.Context, rc *client.Res
 		_, err := rc.Create(ctx, unstructured, metav1.CreateOptions{})
 		return err
 	}
+	if err != nil {
+		return err
+	}
 
 	_, err = rc.UpdateWithCurrent(ctx, current, unstructured)
 	return err
@@ -45,6 +48,9 @@ func (a *CreateIfNotExistObjectAction) Execute(ctx context.Context, rc *client.R
 	_, err := rc.Get(ctx, unstructured.GetName(), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err := rc.Create(ctx, unstructured, metav1.CreateOptions{})
+		return err
+	}
+	if err != nil {
 		return err
 	}
 

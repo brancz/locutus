@@ -61,7 +61,7 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 		return nil, fmt.Errorf("failed to evaluate: %v", err)
 	}
 
-	level.Debug(r.logger).Log("msg", "finished evaluating jsonnet", "content", string(rawJson))
+	level.Debug(r.logger).Log("msg", "finished evaluating jsonnet")
 
 	var res result
 	err = json.Unmarshal([]byte(rawJson), &res)
@@ -71,7 +71,13 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 
 	objects := map[string]*unstructured.Unstructured{}
 	for k, v := range res.Objects {
-		objects[k] = &unstructured.Unstructured{Object: v}
+		u := &unstructured.Unstructured{Object: v}
+		b, err := u.MarshalJSON()
+		if err != nil {
+			return nil, fmt.Errorf("marshal previously unmarshaled json: %w", err)
+		}
+		level.Debug(r.logger).Log("msg", "finished evaluating jsonnet", "object", k, "content", string(b))
+		objects[k] = u
 	}
 
 	return &render.Result{
