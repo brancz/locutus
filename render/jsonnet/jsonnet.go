@@ -46,6 +46,8 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 		return nil, fmt.Errorf("could not read main jsonnet file: %s", jsonnetMain)
 	}
 
+	level.Debug(r.logger).Log("msg", "start evaluating jsonnet")
+
 	vm := jsonnet.MakeVM()
 	vm.Importer(&jsonnetImporter{
 		logger:            r.logger,
@@ -58,6 +60,8 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate: %v", err)
 	}
+
+	level.Debug(r.logger).Log("msg", "finished evaluating jsonnet", "content", string(rawJson))
 
 	var res result
 	err = json.Unmarshal([]byte(rawJson), &res)
