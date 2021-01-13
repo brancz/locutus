@@ -1,0 +1,38 @@
+name: container-image
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+  pull_request:
+
+jobs:
+  cross-build-check:
+    runs-on: ubuntu-latest
+    name: Build and publish container image
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Get branch name
+        shell: bash
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr / -)" >> $GITHUB_ENV
+
+      - name: Get full image name
+        shell: bash
+        run: echo "IMAGE=quay.io/brancz/locutus:${BRANCH_NAME}-$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build container image
+        run: docker build -t "${IMAGE}" .
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        if: "github.ref == 'refs/heads/master'"
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Push container image
+        if: "github.ref == 'refs/heads/master'"
+        run: docker push "${IMAGE}"
