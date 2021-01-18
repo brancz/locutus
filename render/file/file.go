@@ -31,6 +31,10 @@ func (r *Renderer) Render(_ []byte) (*render.Result, error) {
 	dir := r.directory
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
 		if info == nil || info.IsDir() {
 			// skip directories
 			return nil

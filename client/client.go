@@ -2,11 +2,9 @@ package client
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,7 +53,6 @@ func (c *Client) WithLogger(logger log.Logger) {
 
 func (c *Client) SetUpdatePreparations(preparations []UpdatePreparation) {
 	c.updatePreparations = preparations
-	return
 }
 
 func (c *Client) ClientForUnstructured(u *unstructured.Unstructured) (*ResourceClient, error) {
@@ -96,25 +93,6 @@ func (c *Client) ClientFor(apiVersion, kind, namespace string) (*ResourceClient,
 	return &ResourceClient{ResourceInterface: dc.Resource(gvr).Namespace(namespace), updatePreparations: c.updatePreparations}, nil
 }
 
-func (c *Client) getAPIResource(apiVersion, kind string) (*metav1.APIResourceList, *metav1.APIResource, error) {
-	apiResourceLists, err := c.kclient.Discovery().ServerResources()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for _, apiResourceList := range apiResourceLists {
-		if apiResourceList.GroupVersion == apiVersion {
-			for _, r := range apiResourceList.APIResources {
-				if r.Kind == kind {
-					return apiResourceList, &r, nil
-				}
-			}
-		}
-	}
-
-	return nil, nil, fmt.Errorf("apiVersion %s and kind %s not found available in Kubernetes cluster", apiVersion, kind)
-}
-
 func newForConfig(groupVersion string, c *rest.Config) (dynamic.Interface, error) {
 	config := *c
 	err := setConfigDefaults(groupVersion, &config)
@@ -145,7 +123,9 @@ type ResourceClient struct {
 }
 
 func (rc *ResourceClient) UpdateWithCurrent(ctx context.Context, current, updated *unstructured.Unstructured, subresources ...string) (*unstructured.Unstructured, error) {
-	rc.prepareUnstructuredForUpdate(current, updated)
+	if err := rc.prepareUnstructuredForUpdate(current, updated); err != nil {
+		return nil, err
+	}
 
 	return rc.ResourceInterface.Update(ctx, updated, v1.UpdateOptions{}, subresources...)
 }
@@ -154,7 +134,9 @@ func (rc *ResourceClient) prepareUnstructuredForUpdate(current, updated *unstruc
 	updated.SetResourceVersion(current.GetResourceVersion())
 
 	for _, p := range rc.updatePreparations {
-		p.Prepare(current, updated)
+		if err := p.Prepare(current, updated); err != nil {
+			return err
+		}
 	}
 
 	return nil

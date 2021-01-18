@@ -6,21 +6,22 @@ import (
 
 	"github.com/brancz/locutus/trigger"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 type Trigger struct {
 	trigger.ExecutionRegister
 
-	Logger   log.Logger
-	Interval time.Duration
+	logger   log.Logger
+	interval time.Duration
 }
 
 func NewTrigger(logger log.Logger, interval time.Duration) *Trigger {
-	return &Trigger{Logger: logger, Interval: interval}
+	return &Trigger{logger: logger, interval: interval}
 }
 
 func (t *Trigger) Run(ctx context.Context) error {
-	ticker := time.NewTicker(t.Interval)
+	ticker := time.NewTicker(t.interval)
 	defer ticker.Stop()
 
 	for {
@@ -28,8 +29,10 @@ func (t *Trigger) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			t.Logger.Log("msg", "interval triggered")
-			t.Execute(ctx, nil)
+			level.Debug(t.logger).Log("msg", "interval triggered")
+			if err := t.Execute(ctx, nil); err != nil {
+				level.Error(t.logger).Log("msg", "execution failed", "err", err)
+			}
 		}
 	}
 }

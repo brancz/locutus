@@ -3,7 +3,7 @@ name: container-image
 on:
   push:
     branches:
-      - master
+      - main
     tags:
   pull_request:
 
@@ -27,12 +27,12 @@ jobs:
 
       - name: Login to DockerHub
         uses: docker/login-action@v1
-        if: "github.ref == 'refs/heads/master'"
+        if: "github.ref == 'refs/heads/main'"
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
       - name: Push container image
-        if: "github.ref == 'refs/heads/master'"
+        if: "github.ref == 'refs/heads/main'"
         run: docker push "${IMAGE}"

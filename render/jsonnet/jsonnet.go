@@ -56,7 +56,7 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 		configContent:     config,
 		virtualConfigPath: "generic-operator/config",
 	})
-	rawJson, err := vm.EvaluateSnippet(jsonnetMain, string(jsonnetMainContent))
+	rawJson, err := vm.EvaluateAnonymousSnippet(jsonnetMain, string(jsonnetMainContent))
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate: %v", err)
 	}
