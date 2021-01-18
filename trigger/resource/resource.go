@@ -126,12 +126,16 @@ func NewTrigger(
 func (p *Trigger) InputSources() map[string]func() ([]byte, error) {
 	res := map[string]func() ([]byte, error){}
 	for resource, inf := range p.infs {
-		res[resource+"/list"] = func() ([]byte, error) {
-			return json.Marshal(inf.GetStore().List())
-		}
+		res[resource+"/list"] = marshalInformerFunc(inf)
 	}
 
 	return res
+}
+
+func marshalInformerFunc(inf cache.SharedIndexInformer) func() ([]byte, error) {
+	return func() ([]byte, error) {
+		return json.Marshal(inf.GetStore().List())
+	}
 }
 
 func (p *Trigger) Run(ctx context.Context) error {
