@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/brancz/locutus/client"
@@ -202,16 +200,7 @@ func Main() int {
 		})
 	}
 	{
-		term := make(chan os.Signal)
-		g.Add(func() error {
-			signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-			select {
-			case <-term:
-				return nil
-			}
-		}, func(err error) {
-			close(term)
-		})
+		g.Add(run.SignalHandler(context.Background(), os.Interrupt))
 	}
 
 	level.Info(logger).Log("msg", "running", "renderer", renderProviderName, "trigger", triggerProviderName)

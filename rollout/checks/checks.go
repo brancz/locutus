@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+
 	"github.com/brancz/locutus/client"
 	"github.com/brancz/locutus/rollout/types"
 	"github.com/go-kit/kit/log"

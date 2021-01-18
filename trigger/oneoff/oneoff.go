@@ -2,7 +2,6 @@ package oneoff
 
 import (
 	"context"
-	"time"
 
 	"github.com/brancz/locutus/trigger"
 	"github.com/go-kit/kit/log"
@@ -10,8 +9,7 @@ import (
 
 type Trigger struct {
 	trigger.ExecutionRegister
-	interval time.Duration
-	logger   log.Logger
+	logger log.Logger
 }
 
 func NewTrigger(logger log.Logger) trigger.Trigger {

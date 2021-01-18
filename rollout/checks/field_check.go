@@ -193,7 +193,3 @@ func (c *FieldCheck) checkFieldComparison(fieldComparison *types.FieldComparison
 
 	return eq, report
 }
-
-func pathSegmentsFromString(path string) []string {
-	return strings.Split(path, ".")
-}
