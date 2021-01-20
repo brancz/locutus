@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -96,14 +97,14 @@ func NewTrigger(
 		inf := cache.NewSharedIndexInformer(
 			&cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					if r.LabelSelector != nil {
-						options.LabelSelector = r.LabelSelector.String()
+					if r.LabelSelector != nil && r.LabelSelector.MatchLabels != nil {
+						options.LabelSelector = labels.Set(r.LabelSelector.MatchLabels).String()
 					}
 					return c.List(ctx, options)
 				},
 				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					if r.LabelSelector != nil {
-						options.LabelSelector = r.LabelSelector.String()
+					if r.LabelSelector != nil && r.LabelSelector.MatchLabels != nil {
+						options.LabelSelector = labels.Set(r.LabelSelector.MatchLabels).String()
 					}
 					return c.Watch(ctx, options)
 				},
