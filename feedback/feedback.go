@@ -16,6 +16,7 @@ type Status struct {
 	Conditions []*StatusCondition `json:"conditions"`
 }
 
+// +k8s:deepcopy-gen=true
 type StatusCondition struct {
 	LastTransitionTime metav1.Time   `json:"lastTransitionTime"`
 	Name               string        `json:"name"`
