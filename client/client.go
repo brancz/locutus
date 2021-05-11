@@ -2,9 +2,12 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -18,6 +21,9 @@ var (
 		UpdatePreparationFunc(PrepareServiceForUpdate),
 		UpdatePreparationFunc(PrepareDeploymentForUpdate),
 	}
+	DefaultUpdateChecks = []UpdateCheck{
+		UpdateCheckFunc(CheckServiceAccountForUpdate),
+	}
 )
 
 type UpdatePreparation interface {
@@ -30,10 +36,21 @@ func (f UpdatePreparationFunc) Prepare(current, updated *unstructured.Unstructur
 	return f(current, updated)
 }
 
+type UpdateCheck interface {
+	Check(current, updated *unstructured.Unstructured) (bool, error)
+}
+
+type UpdateCheckFunc func(current, updated *unstructured.Unstructured) (bool, error)
+
+func (f UpdateCheckFunc) Check(current, updated *unstructured.Unstructured) (bool, error) {
+	return f(current, updated)
+}
+
 type Client struct {
 	kclient            kubernetes.Interface
 	cfg                *rest.Config
 	updatePreparations []UpdatePreparation
+	updateChecks       []UpdateCheck
 	logger             log.Logger
 }
 
@@ -53,6 +70,10 @@ func (c *Client) WithLogger(logger log.Logger) {
 
 func (c *Client) SetUpdatePreparations(preparations []UpdatePreparation) {
 	c.updatePreparations = preparations
+}
+
+func (c *Client) SetUpdateChecks(checks []UpdateCheck) {
+	c.updateChecks = checks
 }
 
 func (c *Client) ClientForUnstructured(u *unstructured.Unstructured) (*ResourceClient, error) {
@@ -90,7 +111,7 @@ func (c *Client) ClientFor(apiVersion, kind, namespace string) (*ResourceClient,
 		Resource: resourceName,
 	}
 
-	return &ResourceClient{ResourceInterface: dc.Resource(gvr).Namespace(namespace), updatePreparations: c.updatePreparations}, nil
+	return &ResourceClient{ResourceInterface: dc.Resource(gvr).Namespace(namespace), updatePreparations: c.updatePreparations, updateChecks: c.updateChecks}, nil
 }
 
 func newForConfig(groupVersion string, c *rest.Config) (dynamic.Interface, error) {
@@ -120,11 +141,20 @@ type ResourceClient struct {
 	dynamic.ResourceInterface
 
 	updatePreparations []UpdatePreparation
+	updateChecks       []UpdateCheck
 }
 
 func (rc *ResourceClient) UpdateWithCurrent(ctx context.Context, current, updated *unstructured.Unstructured, subresources ...string) (*unstructured.Unstructured, error) {
 	if err := rc.prepareUnstructuredForUpdate(current, updated); err != nil {
 		return nil, err
+	}
+
+	needUpdate, err := rc.checkUnstructuredForUpdate(current, updated)
+	if err != nil {
+		return nil, err
+	}
+	if !needUpdate {
+		return nil, nil
 	}
 
 	return rc.ResourceInterface.Update(ctx, updated, v1.UpdateOptions{}, subresources...)
@@ -140,6 +170,48 @@ func (rc *ResourceClient) prepareUnstructuredForUpdate(current, updated *unstruc
 	}
 
 	return nil
+}
+
+func (rc *ResourceClient) checkUnstructuredForUpdate(current, updated *unstructured.Unstructured) (bool, error) {
+	for _, p := range rc.updateChecks {
+		needUpdate, err := p.Check(current, updated)
+		if err != nil {
+			return needUpdate, err
+		}
+		if !needUpdate {
+			return needUpdate, nil
+		}
+	}
+
+	return true, nil
+}
+
+// For ServiceAccount, check if name/namespace/labels/annotations change, then do update.
+// or else, it creates secrets per time when do update.
+func CheckServiceAccountForUpdate(current, updated *unstructured.Unstructured) (bool, error) {
+	if updated.GetAPIVersion() == "v1" && updated.GetKind() == "ServiceAccount" {
+		currentJSON, _ := current.MarshalJSON()
+		currentSA := &corev1.ServiceAccount{}
+		err := json.Unmarshal(currentJSON, currentSA)
+		if err != nil {
+			return true, err
+		}
+
+		updatedJSON, _ := updated.MarshalJSON()
+		updatedSA := &corev1.ServiceAccount{}
+		err = json.Unmarshal(updatedJSON, updatedSA)
+		if err != nil {
+			return true, err
+		}
+
+		if currentSA.ObjectMeta.GetName() == updatedSA.ObjectMeta.GetName() &&
+			currentSA.ObjectMeta.GetNamespace() == updatedSA.ObjectMeta.GetNamespace() &&
+			reflect.DeepEqual(currentSA.ObjectMeta.GetLabels(), updatedSA.ObjectMeta.GetLabels()) &&
+			reflect.DeepEqual(currentSA.ObjectMeta.GetAnnotations(), updatedSA.ObjectMeta.GetAnnotations()) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func PrepareServiceForUpdate(current, updated *unstructured.Unstructured) error {

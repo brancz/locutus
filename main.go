@@ -117,6 +117,7 @@ func Main() int {
 		cl = client.NewClient(konfig, klient)
 		cl.WithLogger(log.With(logger, "component", "client"))
 		cl.SetUpdatePreparations(client.DefaultUpdatePreparations)
+		cl.SetUpdateChecks(client.DefaultUpdateChecks)
 	}
 
 	sources := map[string]func() ([]byte, error){}
