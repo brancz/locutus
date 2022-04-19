@@ -101,7 +101,7 @@ func Main() int {
 	reg.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 
 	var cl *client.Client
-	{
+	if !renderOnly {
 		konfig, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 		if err != nil {
 			logger.Log("msg", "error building kubeconfig", "err", err)
@@ -118,6 +118,8 @@ func Main() int {
 		cl.WithLogger(log.With(logger, "component", "client"))
 		cl.SetUpdatePreparations(client.DefaultUpdatePreparations)
 		cl.SetUpdateChecks(client.DefaultUpdateChecks)
+	} else {
+		level.Info(logger).Log("msg", "render-only options specified; skipping creation of Kubernetes client")
 	}
 
 	sources := map[string]func() ([]byte, error){}

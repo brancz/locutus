@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -40,7 +41,7 @@ type result struct {
 
 func (r *Renderer) Render(config []byte) (*render.Result, error) {
 	jsonnetMain := r.entrypoint
-	jpaths := []string{"vendor"}
+	jpaths := []string{"vendor", filepath.Dir(jsonnetMain)}
 	jsonnetMainContent, err := ioutil.ReadFile(jsonnetMain)
 	if err != nil {
 		return nil, fmt.Errorf("could not read main jsonnet file: %s", jsonnetMain)
