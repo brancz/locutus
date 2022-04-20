@@ -37,5 +37,8 @@ jobs:
     - name: Build
       run: go build -v ./...
 
+    - name: Build Docker for e2e tests
+      run: make docker
+
     - name: Test
       run: go test -v ./...
