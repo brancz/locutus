@@ -1,0 +1,27 @@
+builds:
+- goos:
+  - linux
+  goarch:
+  - amd64
+  - arm64
+  env:
+  - CGO_ENABLED=0
+dockers:
+- image_templates:
+  - "ghcr.io/brancz/locutus:{{ .Version }}-amd64"
+  use: buildx
+  dockerfile: Dockerfile
+  build_flag_templates:
+  - "--platform=linux/amd64"
+- image_templates:
+  - "ghcr.io/brancz/locutus:{{ .Version }}-arm64"
+  use: buildx
+  goarch: arm64
+  dockerfile: Dockerfile
+  build_flag_templates:
+  - "--platform=linux/arm64/v8"
+docker_manifests:
+- name_template: ghcr.io/brancz/locutus:{{ .Version }}
+  image_templates:
+  - ghcr.io/brancz/locutus:{{ .Version }}-amd64
+  - ghcr.io/brancz/locutus:{{ .Version }}-arm64

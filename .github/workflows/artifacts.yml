@@ -1,0 +1,62 @@
+name: Artifacts
+
+on:
+  push:
+    tags:
+    - '*'
+    branches:
+    - main
+    - release-*
+  pull_request:
+    branches:
+    - main
+    - release-*
+
+env:
+  GORELEASER_VERSION: v1.10.3
+
+jobs:
+  build-and-publish:
+    name: Build and publish using goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+      issues: write
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --force --tags
+
+      - name: Set up Go
+        uses: actions/setup-go@v3.2.1
+        with:
+          go-version-file: .go-version
+          check-latest: true
+          cache: true
+
+      - name: Set Tag
+        run: |
+          echo "goreleaser_current_tag=`git describe --match 'v*' --tags`" >> $GITHUB_ENV
+
+      - name: Get branch name
+        shell: bash
+        run: echo "GITHUB_BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr / -)" >> $GITHUB_ENV
+
+      - name: Login to container registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login -u brancz --password-stdin ghcr.io
+
+      - name: Build and publish using goreleaser
+        uses: goreleaser/goreleaser-action@v3.0.0
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: "${{ env.goreleaser_current_tag }}"
