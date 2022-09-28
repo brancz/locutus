@@ -20,5 +20,8 @@ jobs:
         cache: true
         check-latest: true
 
+    - name: Build Docker for e2e tests
+      run: make docker
+
     - name: Test
       run: go test -v ./...
