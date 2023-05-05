@@ -8,19 +8,19 @@ import (
 	"github.com/brancz/locutus/trigger"
 )
 
-type ConfigPasser struct {
+type FileConfigPasser struct {
 	file     string
 	executor trigger.Execution
 }
 
-func NewConfigPasser(file string, executor trigger.Execution) *ConfigPasser {
-	return &ConfigPasser{
+func NewFileConfigPasser(file string, executor trigger.Execution) *FileConfigPasser {
+	return &FileConfigPasser{
 		file:     file,
 		executor: executor,
 	}
 }
 
-func (p *ConfigPasser) Execute(ctx context.Context, rolloutConfig *rollout.Config) error {
+func (p *FileConfigPasser) Execute(ctx context.Context, rolloutConfig *rollout.Config) error {
 	var err error
 
 	if rolloutConfig == nil {
@@ -35,7 +35,7 @@ func (p *ConfigPasser) Execute(ctx context.Context, rolloutConfig *rollout.Confi
 	return p.executor.Execute(ctx, rolloutConfig)
 }
 
-func (p *ConfigPasser) readConfig(rolloutConfig *rollout.Config) ([]byte, error) {
+func (p *FileConfigPasser) readConfig(rolloutConfig *rollout.Config) ([]byte, error) {
 	if p.file == "" {
 		return rolloutConfig.RawConfig, nil
 	}

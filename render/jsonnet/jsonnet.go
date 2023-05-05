@@ -1,6 +1,7 @@
 package jsonnet
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -18,13 +19,13 @@ import (
 type Renderer struct {
 	logger     log.Logger
 	entrypoint string
-	sources    map[string]func() ([]byte, error)
+	sources    map[string]func(context.Context) ([]byte, error)
 }
 
 func NewRenderer(
 	logger log.Logger,
 	entrypoint string,
-	sources map[string]func() ([]byte, error),
+	sources map[string]func(context.Context) ([]byte, error),
 ) *Renderer {
 	return &Renderer{
 		logger:     logger,
@@ -38,7 +39,7 @@ type result struct {
 	Rollout *rolloutTypes.Rollout             `json:"rollout"`
 }
 
-func (r *Renderer) Render(config []byte) (*render.Result, error) {
+func (r *Renderer) Render(ctx context.Context, config []byte) (*render.Result, error) {
 	jsonnetMain := r.entrypoint
 	jpaths := []string{"vendor"}
 	jsonnetMainContent, err := ioutil.ReadFile(jsonnetMain)
@@ -50,6 +51,7 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 
 	vm := jsonnet.MakeVM()
 	vm.Importer(&jsonnetImporter{
+		ctx:               ctx,
 		logger:            r.logger,
 		sources:           r.sources,
 		fileImporter:      &jsonnet.FileImporter{JPaths: jpaths},
@@ -87,11 +89,12 @@ func (r *Renderer) Render(config []byte) (*render.Result, error) {
 }
 
 type jsonnetImporter struct {
+	ctx               context.Context
 	logger            log.Logger
 	fileImporter      *jsonnet.FileImporter
 	configContent     []byte
 	virtualConfigPath string
-	sources           map[string]func() ([]byte, error)
+	sources           map[string]func(context.Context) ([]byte, error)
 }
 
 func (i *jsonnetImporter) Import(dir, importedPath string) (contents jsonnet.Contents, foundAt string, err error) {
@@ -110,7 +113,7 @@ func (i *jsonnetImporter) Import(dir, importedPath string) (contents jsonnet.Con
 		p := strings.TrimPrefix(importedPath, "locutus-runtime/")
 		f, found := i.sources[p]
 		if found {
-			b, err := f()
+			b, err := f(i.ctx)
 			if err != nil {
 				return jsonnet.Contents{}, "", err
 			}

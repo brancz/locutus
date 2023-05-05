@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,7 @@ func NewRenderer(logger log.Logger, directory, rolloutFile string) *Renderer {
 	}
 }
 
-func (r *Renderer) Render(_ []byte) (*render.Result, error) {
+func (r *Renderer) Render(ctx context.Context, _ []byte) (*render.Result, error) {
 	objects := map[string]*unstructured.Unstructured{}
 	dir := r.directory
 

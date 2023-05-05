@@ -82,6 +82,8 @@ func NewTrigger(
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to open config file")
 	}
+	defer f.Close()
+
 	var config ResourcesTriggerConfig
 	err = yaml.NewYAMLOrJSONDecoder(f, 100).Decode(&config)
 	if err != nil {
@@ -124,8 +126,8 @@ func NewTrigger(
 	return t, nil
 }
 
-func (p *Trigger) InputSources() map[string]func() ([]byte, error) {
-	res := map[string]func() ([]byte, error){}
+func (p *Trigger) InputSources() map[string]func(context.Context) ([]byte, error) {
+	res := map[string]func(context.Context) ([]byte, error){}
 	for resource, inf := range p.infs {
 		res[resource+"/list"] = marshalInformerFunc(inf)
 	}
@@ -133,8 +135,8 @@ func (p *Trigger) InputSources() map[string]func() ([]byte, error) {
 	return res
 }
 
-func marshalInformerFunc(inf cache.SharedIndexInformer) func() ([]byte, error) {
-	return func() ([]byte, error) {
+func marshalInformerFunc(inf cache.SharedIndexInformer) func(context.Context) ([]byte, error) {
+	return func(_ context.Context) ([]byte, error) {
 		return json.Marshal(inf.GetStore().List())
 	}
 }
