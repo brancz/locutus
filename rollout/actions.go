@@ -14,6 +14,7 @@ var (
 	DefaultObjectActions = []ObjectAction{
 		&CreateOrUpdateObjectAction{},
 		&CreateIfNotExistObjectAction{},
+		&DeleteIfExistsObjectAction{},
 	}
 )
 
@@ -59,4 +60,22 @@ func (a *CreateIfNotExistObjectAction) Execute(ctx context.Context, rc *client.R
 
 func (a *CreateIfNotExistObjectAction) Name() string {
 	return "CreateIfNotExist"
+}
+
+type DeleteIfExistsObjectAction struct{}
+
+func (a *DeleteIfExistsObjectAction) Execute(ctx context.Context, rc *client.ResourceClient, unstructured *unstructured.Unstructured) error {
+	err := rc.Delete(ctx, unstructured.GetName(), metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *DeleteIfExistsObjectAction) Name() string {
+	return "DeleteIfExistsObjectAction"
 }
