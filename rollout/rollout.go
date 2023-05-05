@@ -24,7 +24,7 @@ import (
 )
 
 type Renderer interface {
-	Render(config []byte) (*render.Result, error)
+	Render(ctx context.Context, config []byte) (*render.Result, error)
 }
 
 type rolloutMetrics struct {
@@ -103,7 +103,7 @@ func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error)
 	}()
 
 	var res *render.Result
-	res, err = r.provider.Render(rawConfig)
+	res, err = r.provider.Render(ctx, rawConfig)
 	if err != nil {
 		return fmt.Errorf("failed to render: %v", err)
 	}

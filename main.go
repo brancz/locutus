@@ -16,6 +16,8 @@ import (
 	"github.com/brancz/locutus/render/jsonnet"
 	"github.com/brancz/locutus/rollout"
 	"github.com/brancz/locutus/rollout/checks"
+	"github.com/brancz/locutus/source"
+	"github.com/brancz/locutus/source/crdb"
 	"github.com/brancz/locutus/trigger"
 	"github.com/brancz/locutus/trigger/interval"
 	"github.com/brancz/locutus/trigger/oneoff"
@@ -52,18 +54,21 @@ var (
 
 func Main() int {
 	var (
-		logLevel            string
-		masterURL           string
-		kubeconfig          string
-		renderProviderName  string
-		writeStatus         bool
-		triggerProviderName string
-		configFile          string
-		renderOnly          bool
+		logLevel           string
+		masterURL          string
+		kubeconfig         string
+		renderProviderName string
+		writeStatus        bool
+		configFile         string
+		renderOnly         bool
+		oneOff             bool
 
 		rendererFileDirectory     string
 		rendererFileRollout       string
 		rendererJsonnetEntrypoint string
+
+		sourceCockroachdb     string
+		sourceCockroachdbFile string
 
 		triggerIntervalDuration time.Duration
 		triggerResourceConfig   string
@@ -74,15 +79,18 @@ func Main() int {
 	s.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	s.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 	s.StringVar(&renderProviderName, "renderer", "", "The provider to use for rendering manifests.")
-	s.StringVar(&triggerProviderName, "trigger", "", "The provider to use to trigger reconciling.")
 	s.StringVar(&configFile, "config-file", "", "The config file whose content to pass to the render provider.")
 	s.BoolVar(&renderOnly, "render-only", false, "Only render manifests to be rolled out and print to STDOUT.")
+	s.BoolVar(&oneOff, "one-off", false, "Only render and rollout once, then exit.")
 
 	s.StringVar(&rendererFileDirectory, "renderer.file.dir", "manifests/", "Directory to read files from.")
 	s.StringVar(&rendererFileRollout, "renderer.file.rollout", "rollout.yaml", "Plain rollout spec to read.")
 	s.StringVar(&rendererJsonnetEntrypoint, "renderer.jsonnet.entrypoint", "jsonnet/main.jsonnet", "Jsonnet file to execute to render.")
 
-	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Minute, "Duration of interval in which to trigger.")
+	s.StringVar(&sourceCockroachdb, "source.cockroachdb", "", "CockroachDB connection string.")
+	s.StringVar(&sourceCockroachdbFile, "source.cockroachdb.file", "", "CockroachDB connection string.")
+
+	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Duration(0), "Duration of interval in which to trigger.")
 	s.StringVar(&triggerResourceConfig, "trigger.resource.config", "", "Path to configuration of resource triggers.")
 	s.BoolVar(&writeStatus, "trigger.resource.write-status", true, "Whether to write status back to the originating resource.")
 
@@ -120,33 +128,63 @@ func Main() int {
 		cl.SetUpdateChecks(client.DefaultUpdateChecks)
 	}
 
-	sources := map[string]func() ([]byte, error){}
-
 	ctx := context.Background()
-	var trigger trigger.Trigger
-	{
-		switch triggerProviderName {
-		case "interval":
-			trigger = interval.NewTrigger(logger, triggerIntervalDuration)
-		case "oneoff":
-			trigger = oneoff.NewTrigger(logger)
-		case "resource":
-			t, err := resource.NewTrigger(ctx, logger, cl, triggerResourceConfig, writeStatus)
-			if err != nil {
-				logger.Log("msg", "failed to create resource trigger", "err", err)
-				return 1
-			}
+	sources := map[string]func(context.Context) ([]byte, error){}
+	triggers := []trigger.Trigger{}
 
-			triggerSources := t.InputSources()
-			for name, sourceFunc := range triggerSources {
-				level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
-				sources[name] = sourceFunc
-			}
-
-			trigger = t
-		default:
-			logger.Log("msg", "failed to find trigger provider")
+	if triggerResourceConfig != "" {
+		t, err := resource.NewTrigger(ctx, logger, cl, triggerResourceConfig, writeStatus)
+		if err != nil {
+			logger.Log("msg", "failed to create resource trigger", "err", err)
 			return 1
+		}
+
+		triggerSources := t.InputSources()
+		for name, sourceFunc := range triggerSources {
+			level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
+			sources[name] = sourceFunc
+		}
+
+		triggers = append(triggers, t)
+	}
+
+	if triggerIntervalDuration > 0 {
+		triggers = append(triggers, interval.NewTrigger(logger, triggerIntervalDuration))
+	}
+
+	if oneOff {
+		triggers = []trigger.Trigger{oneoff.NewTrigger(logger)}
+	}
+
+	if len(triggers) == 0 {
+		logger.Log("msg", "no triggers configured")
+		return 1
+	}
+
+	if sourceCockroachdbFile != "" {
+		crdbClient, err := crdb.NewClient(
+			ctx,
+			reg,
+			sourceCockroachdb,
+		)
+		if err != nil {
+			logger.Log("msg", "failed to create cockroachdb client", "err", err)
+			return 1
+		}
+
+		s, err := source.NewCockroachdbSource(
+			logger,
+			crdbClient,
+			sourceCockroachdbFile,
+		)
+		if err != nil {
+			logger.Log("msg", "failed to create cockroachdb source", "err", err)
+			return 1
+		}
+
+		for name, sourceFunc := range s.InputSources() {
+			level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
+			sources[name] = sourceFunc
 		}
 	}
 
@@ -167,7 +205,9 @@ func Main() int {
 	runner := rollout.NewRunner(reg, log.With(logger, "component", "rollout-runner"), cl, renderer, c, renderOnly)
 	runner.SetObjectActions(rollout.DefaultObjectActions)
 
-	trigger.Register(config.NewConfigPasser(configFile, runner))
+	for _, trigger := range triggers {
+		trigger.Register(config.NewFileConfigPasser(configFile, runner))
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.InstrumentMetricHandler(reg, promhttp.HandlerFor(reg, promhttp.HandlerOpts{})))
@@ -192,9 +232,10 @@ func Main() int {
 			l.Close()
 		})
 	}
-	{
+	for _, trigger := range triggers {
 		ctx, cancel := context.WithCancel(ctx)
 		g.Add(func() error {
+			level.Info(logger).Log("msg", "starting trigger...", "trigger", fmt.Sprintf("%T", trigger))
 			return errors.Wrap(trigger.Run(ctx), "failed to run trigger")
 		}, func(err error) {
 			cancel()
@@ -204,7 +245,7 @@ func Main() int {
 		g.Add(run.SignalHandler(context.Background(), os.Interrupt))
 	}
 
-	level.Info(logger).Log("msg", "running", "renderer", renderProviderName, "trigger", triggerProviderName)
+	level.Info(logger).Log("msg", "running", "renderer", renderProviderName)
 
 	if err := g.Run(); err != nil {
 		logger.Log("msg", "Unhandled error received. Exiting...", "err", err)
