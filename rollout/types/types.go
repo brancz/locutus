@@ -12,12 +12,14 @@ type Metadata struct {
 }
 
 type RolloutSpec struct {
-	Groups []*RolloutGroup `json:"groups"`
+	Parallel bool            `json:"parallel"`
+	Groups   []*RolloutGroup `json:"groups"`
 }
 
 type RolloutGroup struct {
-	Name  string  `json:"name"`
-	Steps []*Step `json:"steps"`
+	Name     string  `json:"name"`
+	Parallel bool    `json:"parallel"`
+	Steps    []*Step `json:"steps"`
 }
 
 type Step struct {

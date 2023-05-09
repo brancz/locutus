@@ -130,29 +130,24 @@ func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error)
 		var errsLock sync.Mutex
 		var errs error
 		for _, step := range group.Steps {
-			wg.Add(1)
+			if group.Parallel {
+				wg.Add(1)
 
-			go func(step *types.Step) {
-				defer wg.Done()
+				go func(step *types.Step) {
+					defer wg.Done()
 
-				object, found := res.Objects[step.Object]
-				if !found {
-					errsLock.Lock()
-					errs = multierror.Append(errs, fmt.Errorf("could not find object named %q", step.Object))
-					errsLock.Unlock()
-					return
+					if err := r.runStep(ctx, res, group.Name, step); err != nil {
+						errsLock.Lock()
+						errs = multierror.Append(errs, err)
+						errsLock.Unlock()
+						return
+					}
+				}(step)
+			} else {
+				if err := r.runStep(ctx, res, group.Name, step); err != nil {
+					return fmt.Errorf("run step: %w", err)
 				}
-
-				level.Debug(r.logger).Log("msg", "running action", "group", group.Name, "action", step.Action, "object", step.Object)
-
-				if err := r.runStep(ctx, step, object); err != nil {
-					errsLock.Lock()
-					errs = multierror.Append(errs, err)
-					errsLock.Unlock()
-					return
-				}
-			}(step)
-
+			}
 		}
 		wg.Wait()
 
@@ -171,7 +166,14 @@ func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error)
 	return nil
 }
 
-func (r *Runner) runStep(ctx context.Context, step *types.Step, object *unstructured.Unstructured) error {
+func (r *Runner) runStep(ctx context.Context, res *render.Result, groupName string, step *types.Step) error {
+	object, found := res.Objects[step.Object]
+	if !found {
+		return fmt.Errorf("could not find object named %q", step.Object)
+	}
+
+	level.Debug(r.logger).Log("msg", "running action", "group", groupName, "action", step.Action, "object", step.Object)
+
 	err := r.executeAction(ctx, step.Action, object)
 	if err != nil {
 		return fmt.Errorf("failed to execute action (%s): %v", step.Action, err)
