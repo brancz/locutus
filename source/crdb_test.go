@@ -14,6 +14,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/brancz/locutus/db"
 	"github.com/brancz/locutus/source/crdb"
 )
 
@@ -91,16 +92,27 @@ func TestCockroachdbSource(t *testing.T) {
 		t.Fatalf("Could not insert data: %s", err)
 	}
 
-	sources := (&CockroachdbSource{
+	sources, err := (&DatabaseSources{
 		logger: log.NewLogfmtLogger(os.Stdout),
-		crdb:   crdbClient,
-		config: CockroachdbSourceConfig{
-			Queries: []CockroachdbSourceConfigQuery{{
-				Key:   "test",
-				Query: `SELECT name, enabled FROM test ORDER BY name;`,
+		conns: &db.DatabaseConnections{
+			Connections: map[string]*db.DatabaseConnection{
+				"testdb": {
+					Type:            "cockroachdb",
+					CockroachClient: crdbClient,
+				},
+			},
+		},
+		config: DatabaseSourceConfig{
+			Queries: []DatabaseSourceConfigQuery{{
+				DatabaseName: "testdb",
+				Key:          "test",
+				Query:        `SELECT name, enabled FROM test ORDER BY name;`,
 			}},
 		},
 	}).InputSources()
+	if err != nil {
+		t.Fatalf("failed to create input sources: %s", err)
+	}
 
 	payload, err := sources["test"](ctx)
 	if err != nil {

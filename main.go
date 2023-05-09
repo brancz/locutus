@@ -12,12 +12,12 @@ import (
 
 	"github.com/brancz/locutus/client"
 	"github.com/brancz/locutus/config"
+	"github.com/brancz/locutus/db"
 	"github.com/brancz/locutus/render/file"
 	"github.com/brancz/locutus/render/jsonnet"
 	"github.com/brancz/locutus/rollout"
 	"github.com/brancz/locutus/rollout/checks"
 	"github.com/brancz/locutus/source"
-	"github.com/brancz/locutus/source/crdb"
 	"github.com/brancz/locutus/trigger"
 	"github.com/brancz/locutus/trigger/interval"
 	"github.com/brancz/locutus/trigger/oneoff"
@@ -67,8 +67,9 @@ func Main() int {
 		rendererFileRollout       string
 		rendererJsonnetEntrypoint string
 
-		sourceCockroachdb     string
-		sourceCockroachdbFile string
+		databaseConnectionsFile string
+
+		sourceDatabaseFile string
 
 		triggerIntervalDuration time.Duration
 		triggerResourceConfig   string
@@ -82,13 +83,13 @@ func Main() int {
 	s.StringVar(&configFile, "config-file", "", "The config file whose content to pass to the render provider.")
 	s.BoolVar(&renderOnly, "render-only", false, "Only render manifests to be rolled out and print to STDOUT.")
 	s.BoolVar(&oneOff, "one-off", false, "Only render and rollout once, then exit.")
+	s.StringVar(&databaseConnectionsFile, "database-connections-file", "", "File to read database connections from.")
 
 	s.StringVar(&rendererFileDirectory, "renderer.file.dir", "manifests/", "Directory to read files from.")
 	s.StringVar(&rendererFileRollout, "renderer.file.rollout", "rollout.yaml", "Plain rollout spec to read.")
 	s.StringVar(&rendererJsonnetEntrypoint, "renderer.jsonnet.entrypoint", "jsonnet/main.jsonnet", "Jsonnet file to execute to render.")
 
-	s.StringVar(&sourceCockroachdb, "source.cockroachdb", "", "CockroachDB connection string.")
-	s.StringVar(&sourceCockroachdbFile, "source.cockroachdb.file", "", "CockroachDB connection string.")
+	s.StringVar(&sourceDatabaseFile, "source.database.file", "", "File to read database queries from as sources.")
 
 	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Duration(0), "Duration of interval in which to trigger.")
 	s.StringVar(&triggerResourceConfig, "trigger.resource.config", "", "Path to configuration of resource triggers.")
@@ -161,30 +162,28 @@ func Main() int {
 		return 1
 	}
 
-	if sourceCockroachdbFile != "" {
-		crdbClient, err := crdb.NewClient(
-			ctx,
-			reg,
-			sourceCockroachdb,
-		)
+	if databaseConnectionsFile != "" {
+		databaseConnections, err := db.FromFile(ctx, reg, databaseConnectionsFile)
 		if err != nil {
-			logger.Log("msg", "failed to create cockroachdb client", "err", err)
+			logger.Log("msg", "failed to read database connections", "err", err)
 			return 1
 		}
 
-		s, err := source.NewCockroachdbSource(
-			logger,
-			crdbClient,
-			sourceCockroachdbFile,
-		)
-		if err != nil {
-			logger.Log("msg", "failed to create cockroachdb source", "err", err)
-			return 1
-		}
+		if sourceDatabaseFile != "" {
+			s, err := source.NewDatabaseSources(
+				logger,
+				databaseConnections,
+				sourceDatabaseFile,
+			)
+			if err != nil {
+				logger.Log("msg", "failed to create cockroachdb source", "err", err)
+				return 1
+			}
 
-		for name, sourceFunc := range s.InputSources() {
-			level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
-			sources[name] = sourceFunc
+			for name, sourceFunc := range s.InputSources() {
+				level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
+				sources[name] = sourceFunc
+			}
 		}
 	}
 

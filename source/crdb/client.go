@@ -16,12 +16,12 @@ type metrics struct {
 	txDuration prometheus.ObserverVec
 }
 
-type CockroachClient struct {
+type Client struct {
 	pool    *pgxpool.Pool
 	metrics *metrics
 }
 
-func NewClient(ctx context.Context, reg prometheus.Registerer, connString string) (*CockroachClient, error) {
+func NewClient(ctx context.Context, reg prometheus.Registerer, connString string) (*Client, error) {
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse DB string: %w", err)
@@ -37,7 +37,7 @@ func NewClient(ctx context.Context, reg prometheus.Registerer, connString string
 		Help: "A histogram of durations of database transactions.",
 	}, []string{"result"})
 
-	return &CockroachClient{
+	return &Client{
 		pool: pool,
 		metrics: &metrics{
 			txDuration: txDuration,
@@ -46,11 +46,11 @@ func NewClient(ctx context.Context, reg prometheus.Registerer, connString string
 }
 
 // Close the underlying db connection(s).
-func (c *CockroachClient) Close() {
+func (c *Client) Close() {
 	c.pool.Close()
 }
 
-func (c *CockroachClient) ExecuteTx(ctx context.Context, txOptions pgx.TxOptions, txFunc func(tx pgx.Tx) error) error {
+func (c *Client) ExecuteTx(ctx context.Context, txOptions pgx.TxOptions, txFunc func(tx pgx.Tx) error) error {
 	now := time.Now()
 	result := "success"
 	err := crdbpgx.ExecuteTx(ctx, c.pool, txOptions, txFunc)
