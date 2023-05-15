@@ -162,8 +162,9 @@ func Main() int {
 		return 1
 	}
 
+	var databaseConnections *db.Connections
 	if databaseConnectionsFile != "" {
-		databaseConnections, err := db.FromFile(ctx, reg, databaseConnectionsFile)
+		databaseConnections, err = db.FromFile(ctx, reg, databaseConnectionsFile)
 		if err != nil {
 			logger.Log("msg", "failed to read database connections", "err", err)
 			return 1
@@ -180,7 +181,13 @@ func Main() int {
 				return 1
 			}
 
-			for name, sourceFunc := range s.InputSources() {
+			sources, err := s.InputSources()
+			if err != nil {
+				logger.Log("msg", "failed to create cockroachdb source", "err", err)
+				return 1
+			}
+
+			for name, sourceFunc := range sources {
 				level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
 				sources[name] = sourceFunc
 			}
@@ -200,7 +207,7 @@ func Main() int {
 		}
 	}
 
-	c := checks.NewSuccessChecks(logger, cl)
+	c := checks.NewChecks(logger, cl, databaseConnections)
 	runner := rollout.NewRunner(reg, log.With(logger, "component", "rollout-runner"), cl, renderer, c, renderOnly)
 	runner.SetObjectActions(rollout.DefaultObjectActions)
 

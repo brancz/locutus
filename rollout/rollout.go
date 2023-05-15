@@ -37,13 +37,13 @@ type Runner struct {
 	logger     log.Logger
 	client     *client.Client
 	actions    map[string]ObjectAction
-	checks     *checks.SuccessChecks
+	checks     *checks.Checks
 	provider   Renderer
 	renderOnly bool
 	metrics    *rolloutMetrics
 }
 
-func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client, renderer Renderer, checks *checks.SuccessChecks, renderOnly bool) *Runner {
+func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client, renderer Renderer, checks *checks.Checks, renderOnly bool) *Runner {
 	m := &rolloutMetrics{
 		executionDuration: prometheus.NewSummary(prometheus.SummaryOpts{
 			Name: "rollout_execution_duration_seconds",
@@ -179,7 +179,11 @@ func (r *Runner) runStep(ctx context.Context, res *render.Result, groupName stri
 		return fmt.Errorf("failed to execute action (%s): %v", step.Action, err)
 	}
 
-	return r.checks.RunChecks(ctx, step.Success, object)
+	return r.checks.RunChecks(
+		ctx,
+		step.Success,
+		object,
+	)
 }
 
 func (r *Runner) executeAction(ctx context.Context, actionName string, u *unstructured.Unstructured) error {
