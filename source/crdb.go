@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/go-kit/log"
@@ -37,14 +38,14 @@ func NewDatabaseSources(
 ) (*DatabaseSources, error) {
 	f, err := os.Open(file)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to open config file")
+		return nil, fmt.Errorf("open config file: %w", err)
 	}
 	defer f.Close()
 
 	var config DatabaseSourceConfig
 	err = yaml.NewYAMLOrJSONDecoder(f, 100).Decode(&config)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse config file")
+		return nil, fmt.Errorf("parse config file: %w", err)
 	}
 
 	return &DatabaseSources{

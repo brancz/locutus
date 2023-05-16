@@ -19,6 +19,7 @@ import (
 	"github.com/brancz/locutus/rollout/checks"
 	"github.com/brancz/locutus/source"
 	"github.com/brancz/locutus/trigger"
+	"github.com/brancz/locutus/trigger/database"
 	"github.com/brancz/locutus/trigger/interval"
 	"github.com/brancz/locutus/trigger/oneoff"
 	"github.com/brancz/locutus/trigger/resource"
@@ -73,6 +74,7 @@ func Main() int {
 
 		triggerIntervalDuration time.Duration
 		triggerResourceConfig   string
+		triggerDatabaseConfig   string
 	)
 
 	s := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -93,6 +95,7 @@ func Main() int {
 
 	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Duration(0), "Duration of interval in which to trigger.")
 	s.StringVar(&triggerResourceConfig, "trigger.resource.config", "", "Path to configuration of resource triggers.")
+	s.StringVar(&triggerDatabaseConfig, "trigger.database.config", "", "Path to configuration of database triggers.")
 	s.BoolVar(&writeStatus, "trigger.resource.write-status", true, "Whether to write status back to the originating resource.")
 
 	if err := s.Parse(os.Args[1:]); err != nil {
@@ -153,15 +156,6 @@ func Main() int {
 		triggers = append(triggers, interval.NewTrigger(logger, triggerIntervalDuration))
 	}
 
-	if oneOff {
-		triggers = []trigger.Trigger{oneoff.NewTrigger(logger)}
-	}
-
-	if len(triggers) == 0 {
-		logger.Log("msg", "no triggers configured")
-		return 1
-	}
-
 	var databaseConnections *db.Connections
 	if databaseConnectionsFile != "" {
 		databaseConnections, err = db.FromFile(ctx, reg, databaseConnectionsFile)
@@ -192,6 +186,29 @@ func Main() int {
 				sources[name] = sourceFunc
 			}
 		}
+	}
+
+	if triggerDatabaseConfig != "" {
+		t, err := database.NewTrigger(
+			logger,
+			databaseConnections,
+			triggerDatabaseConfig,
+		)
+		if err != nil {
+			logger.Log("msg", "failed to create resource trigger", "err", err)
+			return 1
+		}
+
+		triggers = append(triggers, t)
+	}
+
+	if oneOff {
+		triggers = []trigger.Trigger{oneoff.NewTrigger(logger)}
+	}
+
+	if len(triggers) == 0 {
+		logger.Log("msg", "no triggers configured")
+		return 1
 	}
 
 	var renderer rollout.Renderer
