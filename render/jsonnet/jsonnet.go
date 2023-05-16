@@ -20,18 +20,30 @@ type Renderer struct {
 	logger     log.Logger
 	entrypoint string
 	sources    map[string]func(context.Context) ([]byte, error)
+	extStrs    map[string]string
 }
 
 func NewRenderer(
 	logger log.Logger,
 	entrypoint string,
 	sources map[string]func(context.Context) ([]byte, error),
-) *Renderer {
+	extStrsList []string,
+) (*Renderer, error) {
+	extStrs := map[string]string{}
+	for _, extStr := range extStrsList {
+		extStrSplit := strings.SplitN(extStr, "=", 2)
+		if len(extStrSplit) != 2 {
+			return nil, fmt.Errorf("invalid ext-str: %s", extStr)
+		}
+		extStrs[extStrSplit[0]] = extStrSplit[1]
+	}
+
 	return &Renderer{
 		logger:     logger,
 		entrypoint: entrypoint,
 		sources:    sources,
-	}
+		extStrs:    extStrs,
+	}, nil
 }
 
 type result struct {
@@ -50,6 +62,9 @@ func (r *Renderer) Render(ctx context.Context, config []byte) (*render.Result, e
 	level.Debug(r.logger).Log("msg", "start evaluating jsonnet")
 
 	vm := jsonnet.MakeVM()
+	for k, v := range r.extStrs {
+		vm.ExtVar(k, v)
+	}
 	vm.Importer(&jsonnetImporter{
 		ctx:               ctx,
 		logger:            r.logger,

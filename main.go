@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/brancz/locutus/client"
@@ -53,6 +54,19 @@ var (
 	}
 )
 
+type stringList []string
+
+func (l *stringList) String() string {
+	return strings.Join(*l, ",")
+}
+
+func (l *stringList) Set(value string) error {
+	for _, s := range strings.Split(value, ",") {
+		*l = append(*l, s)
+	}
+	return nil
+}
+
 func Main() int {
 	var (
 		logLevel           string
@@ -67,6 +81,7 @@ func Main() int {
 		rendererFileDirectory     string
 		rendererFileRollout       string
 		rendererJsonnetEntrypoint string
+		rendererJsonnetExtStrs    stringList
 
 		databaseConnectionsFile string
 
@@ -90,6 +105,7 @@ func Main() int {
 	s.StringVar(&rendererFileDirectory, "renderer.file.dir", "manifests/", "Directory to read files from.")
 	s.StringVar(&rendererFileRollout, "renderer.file.rollout", "rollout.yaml", "Plain rollout spec to read.")
 	s.StringVar(&rendererJsonnetEntrypoint, "renderer.jsonnet.entrypoint", "jsonnet/main.jsonnet", "Jsonnet file to execute to render.")
+	s.Var(&rendererJsonnetExtStrs, "renderer.jsonnet.ext-str", "Jsonnet ext-str to pass to the jsonnot VM.")
 
 	s.StringVar(&sourceDatabaseFile, "source.database.file", "", "File to read database queries from as sources.")
 
@@ -215,7 +231,11 @@ func Main() int {
 	{
 		switch renderProviderName {
 		case "jsonnet":
-			renderer = jsonnet.NewRenderer(logger, rendererJsonnetEntrypoint, sources)
+			renderer, err = jsonnet.NewRenderer(logger, rendererJsonnetEntrypoint, sources, []string(rendererJsonnetExtStrs))
+			if err != nil {
+				logger.Log("msg", "failed to create jsonnet renderer", "err", err)
+				return 1
+			}
 		case "file":
 			renderer = file.NewRenderer(logger, rendererFileDirectory, rendererFileRollout)
 		default:
