@@ -21,6 +21,7 @@ type Renderer struct {
 	entrypoint string
 	sources    map[string]func(context.Context) ([]byte, error)
 	extStrs    map[string]string
+	jpaths     []string
 }
 
 func NewRenderer(
@@ -28,6 +29,7 @@ func NewRenderer(
 	entrypoint string,
 	sources map[string]func(context.Context) ([]byte, error),
 	extStrsList []string,
+	jpaths []string,
 ) (*Renderer, error) {
 	extStrs := map[string]string{}
 	for _, extStr := range extStrsList {
@@ -43,6 +45,7 @@ func NewRenderer(
 		entrypoint: entrypoint,
 		sources:    sources,
 		extStrs:    extStrs,
+		jpaths:     jpaths,
 	}, nil
 }
 
@@ -53,7 +56,7 @@ type result struct {
 
 func (r *Renderer) Render(ctx context.Context, config []byte) (*render.Result, error) {
 	jsonnetMain := r.entrypoint
-	jpaths := []string{"vendor"}
+	jpaths := r.jpaths
 	jsonnetMainContent, err := ioutil.ReadFile(jsonnetMain)
 	if err != nil {
 		return nil, fmt.Errorf("could not read main jsonnet file: %s", jsonnetMain)
