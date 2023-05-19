@@ -11,17 +11,20 @@ dockers:
   - "ghcr.io/brancz/locutus:{{ .Version }}-amd64"
   use: buildx
   dockerfile: Dockerfile
+  skip_push: false
   build_flag_templates:
   - "--platform=linux/amd64"
 - image_templates:
   - "ghcr.io/brancz/locutus:{{ .Version }}-arm64"
   use: buildx
   goarch: arm64
+  skip_push: false
   dockerfile: Dockerfile
   build_flag_templates:
   - "--platform=linux/arm64/v8"
 docker_manifests:
 - name_template: ghcr.io/brancz/locutus:{{ .Version }}
+  skip_push: false
   image_templates:
   - ghcr.io/brancz/locutus:{{ .Version }}-amd64
   - ghcr.io/brancz/locutus:{{ .Version }}-arm64
