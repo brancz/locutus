@@ -37,13 +37,13 @@ type Runner struct {
 	logger     log.Logger
 	client     *client.Client
 	actions    map[string]ObjectAction
-	checks     *checks.SuccessChecks
+	checks     *checks.Checks
 	provider   Renderer
 	renderOnly bool
 	metrics    *rolloutMetrics
 }
 
-func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client, renderer Renderer, checks *checks.SuccessChecks, renderOnly bool) *Runner {
+func NewRunner(r prometheus.Registerer, logger log.Logger, client *client.Client, renderer Renderer, checks *checks.Checks, renderOnly bool) *Runner {
 	m := &rolloutMetrics{
 		executionDuration: prometheus.NewSummary(prometheus.SummaryOpts{
 			Name: "rollout_execution_duration_seconds",
@@ -145,7 +145,11 @@ func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error)
 				}(step)
 			} else {
 				if err := r.runStep(ctx, res, group.Name, step); err != nil {
-					return fmt.Errorf("run step: %w", err)
+					if step.ContinueOnError {
+						level.Debug(r.logger).Log("msg", "step failed, but continuing", "step", step.Name, "err", err)
+					} else {
+						return fmt.Errorf("run step: %w", err)
+					}
 				}
 			}
 		}
@@ -179,7 +183,11 @@ func (r *Runner) runStep(ctx context.Context, res *render.Result, groupName stri
 		return fmt.Errorf("failed to execute action (%s): %v", step.Action, err)
 	}
 
-	return r.checks.RunChecks(ctx, step.Success, object)
+	return r.checks.RunChecks(
+		ctx,
+		step.Success,
+		object,
+	)
 }
 
 func (r *Runner) executeAction(ctx context.Context, actionName string, u *unstructured.Unstructured) error {
@@ -196,7 +204,15 @@ func (r *Runner) executeAction(ctx context.Context, actionName string, u *unstru
 }
 
 func (r *Runner) executeSingleAction(ctx context.Context, actionName string, unstructured *unstructured.Unstructured) error {
-	action := r.actions[actionName]
+	action, ok := r.actions[actionName]
+	if !ok {
+		actions := []string{}
+		for k := range r.actions {
+			actions = append(actions, k)
+		}
+		return fmt.Errorf("unknown action %q: available actions are %v", actionName, actions)
+	}
+
 	rc, err := r.client.ClientForUnstructured(unstructured)
 	if err != nil {
 		return err

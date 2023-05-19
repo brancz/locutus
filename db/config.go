@@ -13,28 +13,28 @@ import (
 )
 
 const (
-	DatabaseTypeCockroachDB string = "cockroachdb"
+	TypeCockroachDB string = "cockroachdb"
 )
 
-type DatabaseConnectionsConfig struct {
-	Connections []DatabaseConnectionConfig `json:"connections"`
+type ConnectionsConfig struct {
+	Connections []ConnectionConfig `json:"connections"`
 }
 
-type DatabaseConnectionConfig struct {
-	Name        string                               `json:"name"`
-	Type        string                               `json:"type"`
-	CockroachDB *DatabaseConnectionConfigCockroachdb `json:"cockroachdb,omitempty"`
+type ConnectionConfig struct {
+	Name        string                       `json:"name"`
+	Type        string                       `json:"type"`
+	CockroachDB *ConnectionConfigCockroachdb `json:"cockroachdb,omitempty"`
 }
 
-type DatabaseConnectionConfigCockroachdb struct {
+type ConnectionConfigCockroachdb struct {
 	ConnString string `json:"conn_string"`
 }
 
-type DatabaseConnections struct {
-	Connections map[string]*DatabaseConnection
+type Connections struct {
+	Connections map[string]*Connection
 }
 
-type DatabaseConnection struct {
+type Connection struct {
 	Type            string
 	CockroachClient *crdb.Client
 }
@@ -43,14 +43,14 @@ func FromFile(
 	ctx context.Context,
 	reg prometheus.Registerer,
 	file string,
-) (*DatabaseConnections, error) {
+) (*Connections, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to open config file")
 	}
 	defer f.Close()
 
-	var config DatabaseConnectionsConfig
+	var config ConnectionsConfig
 	err = yaml.NewYAMLOrJSONDecoder(f, 100).Decode(&config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse config file")
@@ -64,20 +64,20 @@ func FromFile(
 		names[conn.Name] = struct{}{}
 	}
 
-	connections := map[string]*DatabaseConnection{}
+	connections := map[string]*Connection{}
 	for _, conn := range config.Connections {
 		switch conn.Type {
-		case DatabaseTypeCockroachDB:
+		case TypeCockroachDB:
 			client, err := crdb.NewClient(
 				ctx,
 				reg,
 				conn.CockroachDB.ConnString,
 			)
 			if err != nil {
-				return nil, fmt.Errorf("create cockroachdb client: %w", err)
+				return nil, fmt.Errorf("create cockroachdb client (conn_string: %v): %w", conn.CockroachDB.ConnString, err)
 			}
 
-			connections[conn.Name] = &DatabaseConnection{
+			connections[conn.Name] = &Connection{
 				Type:            conn.Type,
 				CockroachClient: client,
 			}
@@ -86,7 +86,7 @@ func FromFile(
 		}
 	}
 
-	return &DatabaseConnections{
+	return &Connections{
 		Connections: connections,
 	}, nil
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/brancz/locutus/client"
@@ -19,13 +20,13 @@ import (
 	"github.com/brancz/locutus/rollout/checks"
 	"github.com/brancz/locutus/source"
 	"github.com/brancz/locutus/trigger"
+	"github.com/brancz/locutus/trigger/database"
 	"github.com/brancz/locutus/trigger/interval"
 	"github.com/brancz/locutus/trigger/oneoff"
 	"github.com/brancz/locutus/trigger/resource"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/run"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/kubernetes"
@@ -52,6 +53,19 @@ var (
 	}
 )
 
+type stringList []string
+
+func (l *stringList) String() string {
+	return strings.Join(*l, ",")
+}
+
+func (l *stringList) Set(value string) error {
+	for _, s := range strings.Split(value, ",") {
+		*l = append(*l, s)
+	}
+	return nil
+}
+
 func Main() int {
 	var (
 		logLevel           string
@@ -66,6 +80,7 @@ func Main() int {
 		rendererFileDirectory     string
 		rendererFileRollout       string
 		rendererJsonnetEntrypoint string
+		rendererJsonnetExtStrs    stringList
 
 		databaseConnectionsFile string
 
@@ -73,6 +88,7 @@ func Main() int {
 
 		triggerIntervalDuration time.Duration
 		triggerResourceConfig   string
+		triggerDatabaseConfig   string
 	)
 
 	s := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -88,11 +104,13 @@ func Main() int {
 	s.StringVar(&rendererFileDirectory, "renderer.file.dir", "manifests/", "Directory to read files from.")
 	s.StringVar(&rendererFileRollout, "renderer.file.rollout", "rollout.yaml", "Plain rollout spec to read.")
 	s.StringVar(&rendererJsonnetEntrypoint, "renderer.jsonnet.entrypoint", "jsonnet/main.jsonnet", "Jsonnet file to execute to render.")
+	s.Var(&rendererJsonnetExtStrs, "renderer.jsonnet.ext-str", "Jsonnet ext-str to pass to the jsonnot VM.")
 
 	s.StringVar(&sourceDatabaseFile, "source.database.file", "", "File to read database queries from as sources.")
 
 	s.DurationVar(&triggerIntervalDuration, "trigger.interval.duration", time.Duration(0), "Duration of interval in which to trigger.")
 	s.StringVar(&triggerResourceConfig, "trigger.resource.config", "", "Path to configuration of resource triggers.")
+	s.StringVar(&triggerDatabaseConfig, "trigger.database.config", "", "Path to configuration of database triggers.")
 	s.BoolVar(&writeStatus, "trigger.resource.write-status", true, "Whether to write status back to the originating resource.")
 
 	if err := s.Parse(os.Args[1:]); err != nil {
@@ -153,17 +171,9 @@ func Main() int {
 		triggers = append(triggers, interval.NewTrigger(logger, triggerIntervalDuration))
 	}
 
-	if oneOff {
-		triggers = []trigger.Trigger{oneoff.NewTrigger(logger)}
-	}
-
-	if len(triggers) == 0 {
-		logger.Log("msg", "no triggers configured")
-		return 1
-	}
-
+	var databaseConnections *db.Connections
 	if databaseConnectionsFile != "" {
-		databaseConnections, err := db.FromFile(ctx, reg, databaseConnectionsFile)
+		databaseConnections, err = db.FromFile(ctx, reg, databaseConnectionsFile)
 		if err != nil {
 			logger.Log("msg", "failed to read database connections", "err", err)
 			return 1
@@ -180,18 +190,51 @@ func Main() int {
 				return 1
 			}
 
-			for name, sourceFunc := range s.InputSources() {
+			sources, err := s.InputSources()
+			if err != nil {
+				logger.Log("msg", "failed to create cockroachdb source", "err", err)
+				return 1
+			}
+
+			for name, sourceFunc := range sources {
 				level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
 				sources[name] = sourceFunc
 			}
 		}
 	}
 
+	if triggerDatabaseConfig != "" {
+		t, err := database.NewTrigger(
+			logger,
+			databaseConnections,
+			triggerDatabaseConfig,
+		)
+		if err != nil {
+			logger.Log("msg", "failed to create resource trigger", "err", err)
+			return 1
+		}
+
+		triggers = append(triggers, t)
+	}
+
+	if oneOff {
+		triggers = []trigger.Trigger{oneoff.NewTrigger(logger)}
+	}
+
+	if len(triggers) == 0 {
+		logger.Log("msg", "no triggers configured")
+		return 1
+	}
+
 	var renderer rollout.Renderer
 	{
 		switch renderProviderName {
 		case "jsonnet":
-			renderer = jsonnet.NewRenderer(logger, rendererJsonnetEntrypoint, sources)
+			renderer, err = jsonnet.NewRenderer(logger, rendererJsonnetEntrypoint, sources, []string(rendererJsonnetExtStrs))
+			if err != nil {
+				logger.Log("msg", "failed to create jsonnet renderer", "err", err)
+				return 1
+			}
 		case "file":
 			renderer = file.NewRenderer(logger, rendererFileDirectory, rendererFileRollout)
 		default:
@@ -200,7 +243,11 @@ func Main() int {
 		}
 	}
 
-	c := checks.NewSuccessChecks(logger, cl)
+	c, err := checks.NewChecks(logger, cl, databaseConnections, checks.DefaultChecks)
+	if err != nil {
+		logger.Log("msg", "failed to create checks", "err", err)
+		return 1
+	}
 	runner := rollout.NewRunner(reg, log.With(logger, "component", "rollout-runner"), cl, renderer, c, renderOnly)
 	runner.SetObjectActions(rollout.DefaultObjectActions)
 
@@ -235,7 +282,12 @@ func Main() int {
 		ctx, cancel := context.WithCancel(ctx)
 		g.Add(func() error {
 			level.Info(logger).Log("msg", "starting trigger...", "trigger", fmt.Sprintf("%T", trigger))
-			return errors.Wrap(trigger.Run(ctx), "failed to run trigger")
+
+			if err := trigger.Run(ctx); err != nil {
+				return fmt.Errorf("failed to run trigger: %w", err)
+			}
+
+			return nil
 		}, func(err error) {
 			cancel()
 		})

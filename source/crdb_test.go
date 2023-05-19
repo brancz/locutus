@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/cockroachdb"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v4"
 	"github.com/ory/dockertest/v3"
@@ -94,8 +95,8 @@ func TestCockroachdbSource(t *testing.T) {
 
 	sources, err := (&DatabaseSources{
 		logger: log.NewLogfmtLogger(os.Stdout),
-		conns: &db.DatabaseConnections{
-			Connections: map[string]*db.DatabaseConnection{
+		conns: &db.Connections{
+			Connections: map[string]*db.Connection{
 				"testdb": {
 					Type:            "cockroachdb",
 					CockroachClient: crdbClient,

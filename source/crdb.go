@@ -3,10 +3,10 @@ package source
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/go-kit/log"
-	_ "github.com/golang-migrate/migrate/v4/database/cockroachdb"
 	"github.com/jackc/pgx/v4"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -17,7 +17,7 @@ import (
 
 type DatabaseSources struct {
 	logger log.Logger
-	conns  *db.DatabaseConnections
+	conns  *db.Connections
 	config DatabaseSourceConfig
 }
 
@@ -33,19 +33,19 @@ type DatabaseSourceConfigQuery struct {
 
 func NewDatabaseSources(
 	logger log.Logger,
-	conns *db.DatabaseConnections,
+	conns *db.Connections,
 	file string,
 ) (*DatabaseSources, error) {
 	f, err := os.Open(file)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to open config file")
+		return nil, fmt.Errorf("open config file: %w", err)
 	}
 	defer f.Close()
 
 	var config DatabaseSourceConfig
 	err = yaml.NewYAMLOrJSONDecoder(f, 100).Decode(&config)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse config file")
+		return nil, fmt.Errorf("parse config file: %w", err)
 	}
 
 	return &DatabaseSources{
@@ -76,7 +76,7 @@ func (s *DatabaseSources) sourceForQuery(q DatabaseSourceConfigQuery) (func(cont
 	}
 
 	switch conn.Type {
-	case db.DatabaseTypeCockroachDB:
+	case db.TypeCockroachDB:
 		return cockroachSource(conn.CockroachClient, q.Query), nil
 	default:
 		return nil, errors.Errorf("unsupported database type %q", conn.Type)

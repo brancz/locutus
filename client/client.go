@@ -64,6 +64,10 @@ func NewClient(cfg *rest.Config, kclient kubernetes.Interface) *Client {
 	return c
 }
 
+func (c *Client) KubeClient() kubernetes.Interface {
+	return c.kclient
+}
+
 func (c *Client) WithLogger(logger log.Logger) {
 	c.logger = logger
 }
