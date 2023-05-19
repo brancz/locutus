@@ -145,7 +145,11 @@ func (r *Runner) Execute(ctx context.Context, rolloutConfig *Config) (err error)
 				}(step)
 			} else {
 				if err := r.runStep(ctx, res, group.Name, step); err != nil {
-					return fmt.Errorf("run step: %w", err)
+					if step.ContinueOnError {
+						level.Debug(r.logger).Log("msg", "step failed, but continuing", "step", step.Name, "err", err)
+					} else {
+						return fmt.Errorf("run step: %w", err)
+					}
 				}
 			}
 		}
@@ -200,7 +204,15 @@ func (r *Runner) executeAction(ctx context.Context, actionName string, u *unstru
 }
 
 func (r *Runner) executeSingleAction(ctx context.Context, actionName string, unstructured *unstructured.Unstructured) error {
-	action := r.actions[actionName]
+	action, ok := r.actions[actionName]
+	if !ok {
+		actions := []string{}
+		for k := range r.actions {
+			actions = append(actions, k)
+		}
+		return fmt.Errorf("unknown action %q: available actions are %v", actionName, actions)
+	}
+
 	rc, err := r.client.ClientForUnstructured(unstructured)
 	if err != nil {
 		return err

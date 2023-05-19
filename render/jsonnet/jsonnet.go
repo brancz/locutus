@@ -59,7 +59,7 @@ func (r *Renderer) Render(ctx context.Context, config []byte) (*render.Result, e
 		return nil, fmt.Errorf("could not read main jsonnet file: %s", jsonnetMain)
 	}
 
-	level.Debug(r.logger).Log("msg", "start evaluating jsonnet")
+	level.Debug(r.logger).Log("msg", "start evaluating jsonnet", "config", string(config))
 
 	vm := jsonnet.MakeVM()
 	for k, v := range r.extStrs {

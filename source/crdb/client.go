@@ -29,7 +29,7 @@ func NewClient(ctx context.Context, reg prometheus.Registerer, connString string
 
 	pool, err := pgxpool.ConnectConfig(ctx, config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+		return nil, fmt.Errorf("failed to create connection pool (conn config: %#+v): %w", config.ConnConfig, err)
 	}
 
 	txDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{

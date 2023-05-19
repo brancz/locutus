@@ -60,6 +60,7 @@ func NewCheckRunner(
 	client *client.Client,
 	def *types.SuccessDefinition,
 	databaseConnections *db.Connections,
+	knownChecks map[string]Check,
 ) (*CheckRunner, error) {
 	paths := map[string]*jsonPath{}
 	for _, ev := range def.FieldComparisons.ExpectedValues {
@@ -86,6 +87,7 @@ func NewCheckRunner(
 		def:                 def,
 		paths:               paths,
 		databaseConnections: databaseConnections,
+		knownChecks:         knownChecks,
 	}, nil
 }
 
@@ -99,7 +101,7 @@ func (c *CheckRunner) Execute(ctx context.Context, u *unstructured.Unstructured)
 		return errors.Wrap(err, "failed to get client for unstructured")
 	}
 
-	err = wait.Poll(c.def.FieldComparisons.PollInterval, c.def.FieldComparisons.Timeout, wait.ConditionFunc(func() (bool, error) {
+	err = wait.Poll(c.def.FieldComparisons.PollInterval.Duration, c.def.FieldComparisons.Timeout.Duration, wait.ConditionFunc(func() (bool, error) {
 		level.Debug(c.logger).Log("msg", "starting poll", "name", name, "namespace", namespace)
 		outerValues, err := c.currentValues(ctx, rc, name)
 		if err != nil {
@@ -116,10 +118,10 @@ func (c *CheckRunner) Execute(ctx context.Context, u *unstructured.Unstructured)
 		}
 
 		if err := c.checkFailed(ctx, u); err != nil {
-			return true, fmt.Errorf("check if rollout failed: %w", err)
+			return false, fmt.Errorf("check if rollout failed: %w", err)
 		}
 
-		err = wait.Poll(c.def.FieldComparisons.PollInterval, c.def.FieldComparisons.ProgressTimeout, wait.ConditionFunc(func() (bool, error) {
+		err = wait.Poll(c.def.FieldComparisons.PollInterval.Duration, c.def.FieldComparisons.ProgressTimeout.Duration, wait.ConditionFunc(func() (bool, error) {
 			level.Debug(c.logger).Log("msg", "check whether fields have changed", "name", name, "namespace", namespace)
 			innerValues, err := c.currentValues(ctx, rc, name)
 			if err != nil {
@@ -139,7 +141,7 @@ func (c *CheckRunner) Execute(ctx context.Context, u *unstructured.Unstructured)
 			}
 
 			if err := c.checkFailed(ctx, u); err != nil {
-				return true, fmt.Errorf("check if rollout failed: %w", err)
+				return false, fmt.Errorf("check if rollout failed: %w", err)
 			}
 
 			return hasChanged, err
@@ -162,9 +164,13 @@ func (c *CheckRunner) checkFailed(ctx context.Context, u *unstructured.Unstructu
 			return fmt.Errorf("unknown failure check %q", fd.CheckName)
 		}
 
+		level.Debug(c.logger).Log("msg", "running failure check", "name", u.GetName(), "namespace", u.GetNamespace(), "check-name", fd.CheckName)
 		if err := check.Execute(ctx, c.client, u); err != nil {
+			level.Debug(c.logger).Log("msg", "failure check failed", "name", u.GetName(), "namespace", u.GetNamespace(), "check-name", fd.CheckName, "err", err)
 			if fd.Report != nil {
-				return c.report(ctx, u, fd.Report)
+				if rerr := c.report(ctx, u, fd.Report); rerr != nil {
+					return fmt.Errorf("failed to report failure: %w", rerr)
+				}
 			}
 			return fmt.Errorf("run failed check %q: %w", fd.CheckName, err)
 		}
@@ -248,24 +254,28 @@ func (c *CheckRunner) checkFieldComparison(expectedValue *types.ExpectedFieldCom
 	}
 
 	v := values[expectedValue.Path]
-	valuesString := fmt.Sprintf("%s = %#+v equals ", expectedValue.Path, v)
+	valuesString := fmt.Sprintf("observed %s = %#+v (type: %T); expected ", expectedValue.Path, v, v)
 
 	// static value check has precedence over path check
-	var otherValue interface{}
-	if expectedValue.Value.Static != nil {
-		otherValue = expectedValue.Value.Static
-		valuesString += fmt.Sprintf("static %#+v", expectedValue.Value.Static)
+	var expected interface{}
+	if expectedValue.Value.Path != "" {
+		expected = values[expectedValue.Value.Path]
+		valuesString += fmt.Sprintf("dynamic value of %s = %#+v (type: %T)", expectedValue.Value.Path, expected, expected)
 	} else {
-		otherValue = values[expectedValue.Value.Path]
-		valuesString += fmt.Sprintf("%s = %#+v", expectedValue.Value.Path, otherValue)
+		if expectedValue.Value.Static == nil {
+			expected = expectedValue.Value.StaticInt64
+		} else {
+			expected = expectedValue.Value.Static
+		}
+		valuesString += fmt.Sprintf("static value of %#+v (type: %T)", expected, expected)
 	}
 
-	eq := reflect.DeepEqual(v, otherValue)
+	eq := reflect.DeepEqual(v, expected)
 	if eq {
-		report.Message = "Field comparison succeeded. " + valuesString
+		report.Message = "field comparison succeeded: " + valuesString
 	}
 	if !eq {
-		report.Message = "Field comparison Failed. " + valuesString
+		report.Message = "field comparison failed: " + valuesString
 	}
 
 	return eq, report

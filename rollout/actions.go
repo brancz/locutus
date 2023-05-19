@@ -65,7 +65,10 @@ func (a *CreateIfNotExistObjectAction) Name() string {
 type DeleteIfExistsObjectAction struct{}
 
 func (a *DeleteIfExistsObjectAction) Execute(ctx context.Context, rc *client.ResourceClient, unstructured *unstructured.Unstructured) error {
-	err := rc.Delete(ctx, unstructured.GetName(), metav1.DeleteOptions{})
+	propagationPolicy := metav1.DeletePropagationForeground
+	err := rc.Delete(ctx, unstructured.GetName(), metav1.DeleteOptions{
+		PropagationPolicy: &propagationPolicy,
+	})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -77,5 +80,5 @@ func (a *DeleteIfExistsObjectAction) Execute(ctx context.Context, rc *client.Res
 }
 
 func (a *DeleteIfExistsObjectAction) Name() string {
-	return "DeleteIfExistsObjectAction"
+	return "DeleteIfExist"
 }

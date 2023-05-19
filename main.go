@@ -27,7 +27,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/run"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/kubernetes"
@@ -244,7 +243,11 @@ func Main() int {
 		}
 	}
 
-	c := checks.NewChecks(logger, cl, databaseConnections)
+	c, err := checks.NewChecks(logger, cl, databaseConnections, checks.DefaultChecks)
+	if err != nil {
+		logger.Log("msg", "failed to create checks", "err", err)
+		return 1
+	}
 	runner := rollout.NewRunner(reg, log.With(logger, "component", "rollout-runner"), cl, renderer, c, renderOnly)
 	runner.SetObjectActions(rollout.DefaultObjectActions)
 
@@ -279,7 +282,12 @@ func Main() int {
 		ctx, cancel := context.WithCancel(ctx)
 		g.Add(func() error {
 			level.Info(logger).Log("msg", "starting trigger...", "trigger", fmt.Sprintf("%T", trigger))
-			return errors.Wrap(trigger.Run(ctx), "failed to run trigger")
+
+			if err := trigger.Run(ctx); err != nil {
+				return fmt.Errorf("failed to run trigger: %w", err)
+			}
+
+			return nil
 		}, func(err error) {
 			cancel()
 		})

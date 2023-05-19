@@ -74,7 +74,7 @@ func FromFile(
 				conn.CockroachDB.ConnString,
 			)
 			if err != nil {
-				return nil, fmt.Errorf("create cockroachdb client: %w", err)
+				return nil, fmt.Errorf("create cockroachdb client (conn_string: %v): %w", conn.CockroachDB.ConnString, err)
 			}
 
 			connections[conn.Name] = &Connection{

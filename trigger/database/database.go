@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/jackc/pgx/v4"
+	"github.com/oklog/run"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
@@ -46,6 +47,8 @@ type TriggerRun struct {
 	logger log.Logger
 	runner *TriggerRunner
 
+	key string
+
 	mtx  *sync.Mutex
 	done bool
 }
@@ -66,6 +69,7 @@ func (t *TriggerRun) Run(ctx context.Context, payload []byte) {
 }
 
 func (t *TriggerRun) run(ctx context.Context, payload []byte) error {
+	level.Debug(t.logger).Log("msg", "triggered", "key", t.key)
 	return t.runner.Execute(ctx, &rollout.Config{
 		RawConfig: payload,
 	})
@@ -100,24 +104,27 @@ func NewTrigger(
 }
 
 func (t *TriggerRunner) Run(ctx context.Context) error {
+	g := run.Group{}
 	for _, triggerConfig := range t.config.Triggers {
 		triggerConfig := triggerConfig
-		go func() {
-			if err := t.runTrigger(ctx, triggerConfig); err != nil {
-				level.Error(t.logger).Log("msg", "error running trigger", "err", err)
-			}
-		}()
+		ctx, cancel := context.WithCancel(ctx)
+		g.Add(func() error {
+			t.runTrigger(ctx, triggerConfig)
+			return nil
+		}, func(error) {
+			cancel()
+		})
 	}
-	return nil
+	return g.Run()
 }
 
-func (t *TriggerRunner) runTrigger(ctx context.Context, triggerConfig TriggerConfig) error {
+func (t *TriggerRunner) runTrigger(ctx context.Context, triggerConfig TriggerConfig) {
 	ticker := time.NewTicker(10 * time.Second)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		case <-ticker.C:
 			if err := t.checkTrigger(ctx, triggerConfig); err != nil {
 				level.Error(t.logger).Log("msg", "error checking trigger", "err", err)
@@ -148,6 +155,7 @@ func (t *TriggerRunner) checkTrigger(ctx context.Context, c TriggerConfig) error
 
 func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client, c TriggerConfig) error {
 	if err := conn.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		level.Debug(t.logger).Log("msg", "executing trigger query", "name", c.Name)
 		rows, err := tx.Query(ctx, c.Query)
 		if err != nil {
 			return err
@@ -178,10 +186,20 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 				return errors.Errorf("key column %q not in result", c.Key)
 			}
 
-			triggerKey := fmt.Sprintf("%v", key)
+			var triggerKey string
+			switch key := key.(type) {
+			case string:
+				triggerKey = key
+			case []byte:
+				triggerKey = fmt.Sprintf("%x", key)
+			default:
+				triggerKey = fmt.Sprintf("%v", key)
+			}
+
 			if _, ok := t.activeTriggers[triggerKey]; !ok {
 				run := &TriggerRun{
 					logger: t.logger,
+					key:    triggerKey,
 					runner: t,
 					mtx:    &sync.Mutex{},
 				}

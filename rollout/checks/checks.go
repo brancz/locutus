@@ -7,6 +7,7 @@ import (
 	"github.com/brancz/locutus/db"
 	"github.com/brancz/locutus/rollout/types"
 	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -14,6 +15,7 @@ type Checks struct {
 	logger              log.Logger
 	client              *client.Client
 	databaseConnections *db.Connections
+	knownChecks         map[string]Check
 }
 
 type CheckReport struct {
@@ -25,12 +27,23 @@ func NewChecks(
 	logger log.Logger,
 	client *client.Client,
 	databaseConnections *db.Connections,
-) *Checks {
+	checks []Check,
+) (*Checks, error) {
+	knownChecks := map[string]Check{}
+	for _, c := range checks {
+		name := c.Name()
+		if _, ok := knownChecks[name]; ok {
+			return nil, errors.Errorf("duplicate check with name %q already registered", name)
+		}
+		knownChecks[c.Name()] = c
+	}
+
 	return &Checks{
 		logger:              logger,
 		client:              client,
 		databaseConnections: databaseConnections,
-	}
+		knownChecks:         knownChecks,
+	}, nil
 }
 
 func (c *Checks) RunChecks(
@@ -53,7 +66,13 @@ func (c *Checks) runCheck(
 	successDef *types.SuccessDefinition,
 	u *unstructured.Unstructured,
 ) error {
-	sc, err := NewCheckRunner(c.logger, c.client, successDef, c.databaseConnections)
+	sc, err := NewCheckRunner(
+		c.logger,
+		c.client,
+		successDef,
+		c.databaseConnections,
+		c.knownChecks,
+	)
 	if err != nil {
 		return err
 	}
