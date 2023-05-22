@@ -60,9 +60,7 @@ func (l *stringList) String() string {
 }
 
 func (l *stringList) Set(value string) error {
-	for _, s := range strings.Split(value, ",") {
-		*l = append(*l, s)
-	}
+	*l = append(*l, value)
 	return nil
 }
 
