@@ -20,9 +20,14 @@ func (c JobOOMKilledCheck) Name() string {
 	return "JobOOMKilled"
 }
 
+var (
+	ErrOOMKilled = errors.New("at least one pod of job were OOMKilled")
+	ErrNotAJob   = errors.New("object is not a Job")
+)
+
 func (c *JobOOMKilledCheck) Execute(ctx context.Context, client *client.Client, unstructured *unstructured.Unstructured) error {
 	if unstructured.GetKind() != "Job" {
-		return errors.New("not a job")
+		return ErrNotAJob
 	}
 
 	list, err := client.KubeClient().CoreV1().Pods(unstructured.GetNamespace()).List(ctx, metav1.ListOptions{
@@ -35,10 +40,14 @@ func (c *JobOOMKilledCheck) Execute(ctx context.Context, client *client.Client, 
 	for _, pod := range list.Items {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason == "OOMKilled" {
-				return fmt.Errorf("pod %s/%s was OOMKilled", pod.GetNamespace(), pod.GetName())
+				return fmt.Errorf("pod %s/%s was OOMKilled: %w", pod.GetNamespace(), pod.GetName(), ErrOOMKilled)
 			}
 		}
 	}
 
 	return nil
+}
+
+func (c *JobOOMKilledCheck) IsFailedError(err error) bool {
+	return errors.Is(err, ErrOOMKilled)
 }

@@ -44,6 +44,7 @@ func (j *jsonPath) findResult(data map[string]interface{}) (interface{}, error) 
 type Check interface {
 	Execute(ctx context.Context, client *client.Client, u *unstructured.Unstructured) error
 	Name() string
+	IsFailedError(err error) bool
 }
 
 type CheckRunner struct {
@@ -167,10 +168,12 @@ func (c *CheckRunner) checkFailed(ctx context.Context, u *unstructured.Unstructu
 		level.Debug(c.logger).Log("msg", "running failure check", "name", u.GetName(), "namespace", u.GetNamespace(), "check-name", fd.CheckName)
 		if err := check.Execute(ctx, c.client, u); err != nil {
 			level.Debug(c.logger).Log("msg", "failure check failed", "name", u.GetName(), "namespace", u.GetNamespace(), "check-name", fd.CheckName, "err", err)
-			if fd.Report != nil {
+			if fd.Report != nil && check.IsFailedError(err) {
 				if rerr := c.report(ctx, u, fd.Report); rerr != nil {
 					return fmt.Errorf("failed to report failure: %w", rerr)
 				}
+
+				return nil
 			}
 			return fmt.Errorf("run failed check %q: %w", fd.CheckName, err)
 		}
