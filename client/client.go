@@ -3,9 +3,10 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 
 	"github.com/go-kit/kit/log"
+	gocmp "github.com/google/go-cmp/cmp"
+	gocmpopts "github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -208,10 +209,12 @@ func CheckServiceAccountForUpdate(current, updated *unstructured.Unstructured) (
 			return true, err
 		}
 
+		cmpOptions := []gocmp.Option{gocmpopts.EquateEmpty()}
+
 		if currentSA.ObjectMeta.GetName() == updatedSA.ObjectMeta.GetName() &&
 			currentSA.ObjectMeta.GetNamespace() == updatedSA.ObjectMeta.GetNamespace() &&
-			reflect.DeepEqual(currentSA.ObjectMeta.GetLabels(), updatedSA.ObjectMeta.GetLabels()) &&
-			reflect.DeepEqual(currentSA.ObjectMeta.GetAnnotations(), updatedSA.ObjectMeta.GetAnnotations()) {
+			gocmp.Equal(currentSA.ObjectMeta.GetLabels(), updatedSA.ObjectMeta.GetLabels(), cmpOptions...) &&
+			gocmp.Equal(currentSA.ObjectMeta.GetAnnotations(), updatedSA.ObjectMeta.GetAnnotations(), cmpOptions...) {
 			return false, nil
 		}
 	}
