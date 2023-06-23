@@ -40,6 +40,13 @@ func NewRenderer(
 		extStrs[extStrSplit[0]] = extStrSplit[1]
 	}
 
+	sourceNames := []string{}
+	for k := range sources {
+		sourceNames = append(sourceNames, k)
+	}
+	sort.Strings(sourceNames)
+	level.Debug(logger).Log("msg", "configured dynamic sources", "sources", strings.Join(sourceNames, ","))
+
 	return &Renderer{
 		logger:     logger,
 		entrypoint: entrypoint,
@@ -119,13 +126,6 @@ func (i *jsonnetImporter) Import(dir, importedPath string) (contents jsonnet.Con
 	if importedPath == i.virtualConfigPath {
 		return jsonnet.MakeContents(string(i.configContent)), i.virtualConfigPath, nil
 	}
-
-	sourceNames := []string{}
-	for k := range i.sources {
-		sourceNames = append(sourceNames, k)
-	}
-	sort.Strings(sourceNames)
-	level.Debug(i.logger).Log("msg", "available dynamic sources", "sources", strings.Join(sourceNames, ","))
 
 	if strings.HasPrefix(importedPath, "locutus-runtime/") {
 		p := strings.TrimPrefix(importedPath, "locutus-runtime/")

@@ -26,8 +26,8 @@ type DatabaseSourceConfig struct {
 }
 
 type DatabaseSourceConfigQuery struct {
+	Name         string `json:"name"`
 	DatabaseName string `json:"databaseName"`
-	Key          string `json:"key"`
 	Query        string `json:"query"`
 }
 
@@ -60,7 +60,7 @@ func (s *DatabaseSources) InputSources() (map[string]func(context.Context) ([]by
 
 	var err error
 	for _, query := range s.config.Queries {
-		res[query.Key], err = s.sourceForQuery(query)
+		res[query.Name], err = s.sourceForQuery(query)
 		if err != nil {
 			return nil, err
 		}

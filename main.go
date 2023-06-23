@@ -179,27 +179,28 @@ func Main() int {
 			return 1
 		}
 
-		if sourceDatabaseFile != "" {
-			s, err := source.NewDatabaseSources(
-				logger,
-				databaseConnections,
-				sourceDatabaseFile,
-			)
-			if err != nil {
-				logger.Log("msg", "failed to create cockroachdb source", "err", err)
-				return 1
-			}
+	}
 
-			sources, err := s.InputSources()
-			if err != nil {
-				logger.Log("msg", "failed to create cockroachdb source", "err", err)
-				return 1
-			}
+	if sourceDatabaseFile != "" {
+		s, err := source.NewDatabaseSources(
+			logger,
+			databaseConnections,
+			sourceDatabaseFile,
+		)
+		if err != nil {
+			logger.Log("msg", "failed to create cockroachdb source", "err", err)
+			return 1
+		}
 
-			for name, sourceFunc := range sources {
-				level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
-				sources[name] = sourceFunc
-			}
+		databaseSources, err := s.InputSources()
+		if err != nil {
+			logger.Log("msg", "failed to create cockroachdb source", "err", err)
+			return 1
+		}
+
+		for name, sourceFunc := range databaseSources {
+			level.Debug(logger).Log("msg", "adding dynamic import", "source", name)
+			sources[name] = sourceFunc
 		}
 	}
 

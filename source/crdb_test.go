@@ -106,7 +106,7 @@ func TestCockroachdbSource(t *testing.T) {
 		config: DatabaseSourceConfig{
 			Queries: []DatabaseSourceConfigQuery{{
 				DatabaseName: "testdb",
-				Key:          "test",
+				Name:         "test",
 				Query:        `SELECT name, enabled FROM test ORDER BY name;`,
 			}},
 		},
