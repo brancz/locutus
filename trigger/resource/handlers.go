@@ -116,7 +116,7 @@ func NewResourceHandlers(logger log.Logger, inf cache.SharedIndexInformer, enque
 	}, nil
 }
 
-func (r *ResourceHandlers) OnAdd(obj interface{}) {
+func (r *ResourceHandlers) OnAdd(obj interface{}, isInInitialList bool) {
 	key, ok := r.keyFunc(obj)
 	if !ok {
 		return
