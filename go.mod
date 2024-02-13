@@ -8,7 +8,7 @@ require (
 	github.com/go-kit/log v0.1.0
 	github.com/golang-migrate/migrate/v4 v4.15.2
 	github.com/google/go-cmp v0.5.9
-	github.com/google/go-jsonnet v0.17.0
+	github.com/google/go-jsonnet v0.20.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jackc/pgx/v4 v4.18.1
 	github.com/oklog/run v1.1.0
