@@ -185,7 +185,6 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 		}
 
 		rowsArray := make([]map[string]any, 0)
-		groupTriggerKey := ""
 		for rows.Next() {
 			row := make(map[string]any, len(columns))
 
@@ -212,7 +211,6 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 			default:
 				triggerKey = fmt.Sprintf("%v", key)
 			}
-			groupTriggerKey += triggerKey
 
 			if !c.GroupsRowsToArray {
 				payload, err := json.Marshal(row)
@@ -232,7 +230,7 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 				return err
 			}
 
-			t.ScheduleTriggerRun(ctx, c.Name, groupTriggerKey, payload)
+			t.ScheduleTriggerRun(ctx, c.Name, "", payload)
 		}
 
 		return nil
