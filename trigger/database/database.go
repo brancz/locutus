@@ -154,7 +154,7 @@ func (t *TriggerRunner) checkTrigger(ctx context.Context, c TriggerConfig) error
 	}
 }
 
-func (t *TriggerRunner) ScheduleTriggerRun(ctx context.Context, triggerName, key string, payload []byte) error {
+func (t *TriggerRunner) ScheduleTriggerRun(ctx context.Context, triggerName, key string, payload []byte) {
 	if _, ok := t.activeTriggers[key]; !ok {
 		run := &TriggerRun{
 			logger: t.logger,
@@ -166,8 +166,6 @@ func (t *TriggerRunner) ScheduleTriggerRun(ctx context.Context, triggerName, key
 
 		go run.Run(ctx, payload)
 	}
-
-	return nil
 }
 
 func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client, c TriggerConfig) error {
@@ -222,9 +220,7 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 					return err
 				}
 
-				if err := t.ScheduleTriggerRun(ctx, c.Name, triggerKey, payload); err != nil {
-					return err
-				}
+				t.ScheduleTriggerRun(ctx, c.Name, triggerKey, payload)
 			} else {
 				rowsArray = append(rowsArray, row)
 			}
@@ -236,10 +232,7 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 				return err
 			}
 
-			if err := t.ScheduleTriggerRun(ctx, c.Name, groupTriggerKey, payload); err != nil {
-				return err
-			}
-
+			t.ScheduleTriggerRun(ctx, c.Name, groupTriggerKey, payload)
 		}
 
 		return nil
