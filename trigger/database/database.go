@@ -26,10 +26,11 @@ type TriggerConfigs struct {
 }
 
 type TriggerConfig struct {
-	Name         string `json:"name"`
-	DatabaseName string `json:"databaseName"`
-	Query        string `json:"query"`
-	Key          string `json:"key"`
+	Name              string `json:"name"`
+	DatabaseName      string `json:"databaseName"`
+	Query             string `json:"query"`
+	Key               string `json:"key"`
+	GroupsRowsToArray bool   `json:"groupsRowsToArray"`
 }
 
 type TriggerRunner struct {
@@ -153,6 +154,20 @@ func (t *TriggerRunner) checkTrigger(ctx context.Context, c TriggerConfig) error
 	}
 }
 
+func (t *TriggerRunner) ScheduleTriggerRun(ctx context.Context, triggerName, key string, payload []byte) {
+	if _, ok := t.activeTriggers[key]; !ok {
+		run := &TriggerRun{
+			logger: t.logger,
+			key:    key,
+			runner: t,
+			mtx:    &sync.Mutex{},
+		}
+		t.activeTriggers[triggerName][key] = run
+
+		go run.Run(ctx, payload)
+	}
+}
+
 func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client, c TriggerConfig) error {
 	if err := conn.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		level.Debug(t.logger).Log("msg", "executing trigger query", "name", c.Name)
@@ -169,6 +184,7 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 			columns = append(columns, string(field.Name))
 		}
 
+		rowsArray := make([]map[string]any, 0)
 		for rows.Next() {
 			row := make(map[string]any, len(columns))
 
@@ -196,21 +212,25 @@ func (t *TriggerRunner) cockroachTrigger(ctx context.Context, conn *crdb.Client,
 				triggerKey = fmt.Sprintf("%v", key)
 			}
 
-			if _, ok := t.activeTriggers[triggerKey]; !ok {
-				run := &TriggerRun{
-					logger: t.logger,
-					key:    triggerKey,
-					runner: t,
-					mtx:    &sync.Mutex{},
-				}
-				t.activeTriggers[c.Name][triggerKey] = run
+			if !c.GroupsRowsToArray {
 				payload, err := json.Marshal(row)
 				if err != nil {
 					return err
 				}
 
-				go run.Run(ctx, payload)
+				t.ScheduleTriggerRun(ctx, c.Name, triggerKey, payload)
+			} else {
+				rowsArray = append(rowsArray, row)
 			}
+		}
+
+		if c.GroupsRowsToArray {
+			payload, err := json.Marshal(rowsArray)
+			if err != nil {
+				return err
+			}
+
+			t.ScheduleTriggerRun(ctx, c.Name, "", payload)
 		}
 
 		return nil
