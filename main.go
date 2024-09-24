@@ -69,6 +69,8 @@ func Main() int {
 		logLevel           string
 		masterURL          string
 		kubeconfig         string
+		qps                int
+		burst              int
 		renderProviderName string
 		writeStatus        bool
 		configFile         string
@@ -93,6 +95,8 @@ func Main() int {
 	s := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	s.StringVar(&logLevel, "log-level", logLevelInfo, "Log level to use.")
 	s.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
+	s.IntVar(&qps, "qps", 5, "QPS to use while talking with kubernetes API.")
+	s.IntVar(&burst, "burst", 10, "Burst to use while talking with kubernetes API.")
 	s.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 	s.StringVar(&renderProviderName, "renderer", "", "The provider to use for rendering manifests.")
 	s.StringVar(&configFile, "config-file", "", "The config file whose content to pass to the render provider.")
@@ -134,6 +138,8 @@ func Main() int {
 			logger.Log("msg", "error building kubeconfig", "err", err)
 			return 1
 		}
+		konfig.QPS = float32(qps)
+		konfig.Burst = burst
 
 		klient, err := kubernetes.NewForConfig(konfig)
 		if err != nil {
