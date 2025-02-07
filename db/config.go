@@ -69,7 +69,10 @@ func FromFile(
 	for _, conn := range config.Connections {
 		switch conn.Type {
 		case TypeCockroachDB:
-			connString := conn.CockroachDB.ConnString
+			connString := ""
+			if conn.CockroachDB != nil {
+				connString = conn.CockroachDB.ConnString
+			}
 			if connString == "" && defaultDatabaseUrlFile != "" {
 				f, err := os.ReadFile(defaultDatabaseUrlFile)
 				if err != nil {
