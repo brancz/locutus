@@ -43,6 +43,7 @@ func FromFile(
 	ctx context.Context,
 	reg prometheus.Registerer,
 	file string,
+	defaultDatabaseUrlFile string,
 ) (*Connections, error) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -68,10 +69,19 @@ func FromFile(
 	for _, conn := range config.Connections {
 		switch conn.Type {
 		case TypeCockroachDB:
+			connString := conn.CockroachDB.ConnString
+			if connString == "" && defaultDatabaseUrlFile != "" {
+				f, err := os.ReadFile(defaultDatabaseUrlFile)
+				if err != nil {
+					return nil, errors.Wrap(err, "failed to read default database url file")
+				}
+				connString = string(f)
+			}
+
 			client, err := crdb.NewClient(
 				ctx,
 				reg,
-				conn.CockroachDB.ConnString,
+				connString,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("create cockroachdb client (conn_string: %v): %w", conn.CockroachDB.ConnString, err)

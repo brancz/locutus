@@ -84,6 +84,7 @@ func Main() int {
 		rendererJsonnetExtStrs    stringList
 
 		databaseConnectionsFile string
+		defaultDatabaseUrlFile  string
 
 		sourceDatabaseFile string
 
@@ -103,6 +104,7 @@ func Main() int {
 	s.BoolVar(&renderOnly, "render-only", false, "Only render manifests to be rolled out and print to STDOUT.")
 	s.BoolVar(&oneOff, "one-off", false, "Only render and rollout once, then exit.")
 	s.StringVar(&databaseConnectionsFile, "database-connections-file", "", "File to read database connections from.")
+	s.StringVar(&defaultDatabaseUrlFile, "default-database-url-file", "", "File to read default database URL from.")
 
 	s.StringVar(&rendererFileDirectory, "renderer.file.dir", "manifests/", "Directory to read files from.")
 	s.StringVar(&rendererFileRollout, "renderer.file.rollout", "rollout.yaml", "Plain rollout spec to read.")
@@ -179,7 +181,7 @@ func Main() int {
 
 	var databaseConnections *db.Connections
 	if databaseConnectionsFile != "" {
-		databaseConnections, err = db.FromFile(ctx, reg, databaseConnectionsFile)
+		databaseConnections, err = db.FromFile(ctx, reg, databaseConnectionsFile, defaultDatabaseUrlFile)
 		if err != nil {
 			logger.Log("msg", "failed to read database connections", "err", err)
 			return 1
