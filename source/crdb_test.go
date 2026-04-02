@@ -27,7 +27,7 @@ func TestCockroachdbSource(t *testing.T) {
 		t.Fatalf("Could not connect to docker: %s", err)
 	}
 
-	resource, err := pool.RunWithOptions(&dockertest.RunOptions{Repository: "cockroachdb/cockroach", Tag: "v21.1.2", Cmd: []string{"start-single-node", "--insecure"}})
+	resource, err := pool.RunWithOptions(&dockertest.RunOptions{Repository: "cockroachdb/cockroach", Tag: "v26.1.1", Cmd: []string{"start-single-node", "--insecure"}})
 	if err != nil {
 		t.Fatalf("Could not start resource: %s", err)
 	}

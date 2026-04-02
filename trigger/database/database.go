@@ -137,7 +137,7 @@ func (t *TriggerRunner) runTrigger(ctx context.Context, triggerConfig TriggerCon
 func (t *TriggerRunner) checkTrigger(ctx context.Context, c TriggerConfig) error {
 	for key, trigger := range t.activeTriggers[c.Name] {
 		if trigger.Done() {
-			delete(t.activeTriggers, key)
+			delete(t.activeTriggers[c.Name], key)
 		}
 	}
 
@@ -155,7 +155,7 @@ func (t *TriggerRunner) checkTrigger(ctx context.Context, c TriggerConfig) error
 }
 
 func (t *TriggerRunner) ScheduleTriggerRun(ctx context.Context, triggerName, key string, payload []byte) {
-	if _, ok := t.activeTriggers[key]; !ok {
+	if _, ok := t.activeTriggers[triggerName][key]; !ok {
 		run := &TriggerRun{
 			logger: t.logger,
 			key:    key,
